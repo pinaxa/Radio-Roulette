@@ -1,0 +1,2202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio Roulette — studio</title>
+<style>
+  /* ---------- palette ----------
+     Ogni tema ridefinisce gli stessi token: nient'altro nel foglio conosce un
+     colore, cosi' cambiarli tutti e' un attributo su <html>. I token --wave-*
+     li rilegge il canvas a ogni disegno tramite skinColors(), quindi la forma
+     d'onda segue il tema senza codice dedicato.
+     --red-ink e' il testo SOPRA l'accento: sui temi chiari e' chiaro, su quelli
+     scuri torna scuro, altrimenti i tasti pieni diventano illeggibili.
+     --red-hi e' l'accento al passaggio del mouse: piu' cupo sui fondi chiari,
+     piu' acceso su quelli scuri. */
+  :root{
+    color-scheme:light;
+    --paper:#e7e4dc; --panel:#edebe4; --panel2:#dedbd2;
+    --ink:#17171a; --dim:#78746b; --line:#bab5aa;
+    --red:#c0392b; --red-ink:#f4f1ea; --red-soft:rgba(192,57,43,.10); --red-hi:#a93125;
+    --tick-a:rgba(23,23,26,.11); --tick-b:rgba(23,23,26,.26);
+    /* lette dal canvas via skinColors() */
+    --wave-axis:#c6c1b5;
+    --wave-shade:rgba(23,23,26,.045);
+    --wave-ctx:rgba(120,116,107,.55);
+    --wave-sel:#c0392b;
+    --wave-beat:rgba(23,23,26,.20);
+    --wave-flag:#c0392b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+  }
+
+  /* MIDNIGHT — notturno, accento ambra da valvola */
+  :root[data-theme="midnight"]{
+    color-scheme:dark;
+    --paper:#14151a; --panel:#1b1d23; --panel2:#23262e;
+    --ink:#e8e6e0; --dim:#8b8d96; --line:#343841;
+    --red:#e39b34; --red-ink:#17171a; --red-soft:rgba(227,155,52,.14); --red-hi:#f0ad4a;
+    --tick-a:rgba(232,230,224,.10); --tick-b:rgba(232,230,224,.24);
+    --wave-axis:#3a3e48;
+    --wave-shade:rgba(232,230,224,.05);
+    --wave-ctx:rgba(139,141,150,.55);
+    --wave-sel:#e39b34;
+    --wave-beat:rgba(232,230,224,.22);
+    --wave-flag:#e39b34;
+  }
+
+  /* EMBER — il rosso del tema Default su fondo notturno caldo.
+     L'accento resta identico (#c0392b); cambia solo cio' che gli sta intorno.
+     Il testo sopra l'accento resta chiaro, perche' quel rosso e' gia' scuro. */
+  :root[data-theme="ember"]{
+    color-scheme:dark;
+    --paper:#171614; --panel:#1e1d1b; --panel2:#272522;
+    --ink:#e9e5dd; --dim:#8e887d; --line:#37342f;
+    --red:#c0392b; --red-ink:#f4f1ea; --red-soft:rgba(192,57,43,.16); --red-hi:#d4503f;
+    --tick-a:rgba(233,229,221,.10); --tick-b:rgba(233,229,221,.24);
+    --wave-axis:#3d3934;
+    --wave-shade:rgba(233,229,221,.05);
+    --wave-ctx:rgba(142,136,125,.55);
+    --wave-sel:#c0392b;
+    --wave-beat:rgba(233,229,221,.22);
+    --wave-flag:#c0392b;
+  }
+
+  /* PHOSPHOR — fosforo da oscilloscopio, verde acceso su nero verdastro */
+  :root[data-theme="phosphor"]{
+    color-scheme:dark;
+    --paper:#0f1310; --panel:#151a16; --panel2:#1c231e;
+    --ink:#dfe8e0; --dim:#7e8c82; --line:#2b352e;
+    --red:#57c785; --red-ink:#0f1310; --red-soft:rgba(87,199,133,.14); --red-hi:#6fdb9b;
+    --tick-a:rgba(223,232,224,.10); --tick-b:rgba(223,232,224,.24);
+    --wave-axis:#303b34;
+    --wave-shade:rgba(223,232,224,.05);
+    --wave-ctx:rgba(126,140,130,.55);
+    --wave-sel:#57c785;
+    --wave-beat:rgba(223,232,224,.22);
+    --wave-flag:#57c785;
+  }
+
+  /* SEPIA — carta invecchiata, accento terra di Siena */
+  :root[data-theme="sepia"]{
+    color-scheme:light;
+    --paper:#ece3d4; --panel:#f2ebde; --panel2:#e0d5c2;
+    --ink:#241d14; --dim:#7d7060; --line:#c3b6a0;
+    --red:#9c5a2c; --red-ink:#f5efe4; --red-soft:rgba(156,90,44,.12); --red-hi:#82471f;
+    --tick-a:rgba(36,29,20,.11); --tick-b:rgba(36,29,20,.26);
+    --wave-axis:#cabda7;
+    --wave-shade:rgba(36,29,20,.05);
+    --wave-ctx:rgba(125,112,96,.55);
+    --wave-sel:#9c5a2c;
+    --wave-beat:rgba(36,29,20,.20);
+    --wave-flag:#9c5a2c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--mono); font-size:12.5px; line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .topbar{height:5px; background:var(--red)}
+  .wrap{max-width:1180px; margin:0 auto; border-left:1px solid var(--line);
+        border-right:1px solid var(--line); min-height:calc(100% - 5px);
+        display:flex; flex-direction:column; background:var(--paper)}
+
+  /* ---------- testata ---------- */
+  header{display:flex; align-items:flex-start; gap:22px; padding:15px 22px;
+         border-bottom:1px solid var(--line)}
+  .brand h1{font-family:var(--sans); font-size:29px; font-weight:700; letter-spacing:.01em;
+            margin:0; line-height:1}
+  .brand .sub{font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--dim); margin-top:5px}
+  .logo{width:38px; height:38px; flex:0 0 38px; border:1px solid var(--line);
+        background:var(--panel2); overflow:hidden; display:flex; align-items:center; justify-content:center}
+  .logo img{width:100%; height:100%; object-fit:contain}
+  .fileinfo{flex:1; min-width:0}
+  .fname{font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block}
+  .meta{font-size:11px; color:var(--dim)}
+  .chips{display:flex; flex-wrap:wrap; gap:5px; margin-top:5px}
+  .chip{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);
+        border:1px solid var(--line); padding:2px 6px}
+  .chip.on, .chip.cap{color:var(--red); border-color:var(--red)}
+  .chip.match{background:var(--red); border-color:var(--red); color:var(--red-ink)}
+  /* Lo stato sta sotto il marchio, a sinistra: cosi' non balla con la larghezza
+     del nome della stazione e resta sempre nello stesso punto dell'occhio. */
+  .onair{display:flex; align-items:center; gap:8px; font-size:10.5px; letter-spacing:.14em;
+         text-transform:uppercase; color:var(--dim); white-space:nowrap; margin-top:9px}
+  .led{width:9px; height:9px; border-radius:50%; background:var(--line); flex:0 0 9px}
+  .led.live{background:var(--red)} .led.load{background:var(--red); animation:blink .8s infinite}
+  .led.err{background:var(--ink)}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* ---------- comandi ---------- */
+  button{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink); background:transparent; border:1px solid var(--line);
+    padding:10px 15px; cursor:pointer; border-radius:0; transition:.1s;
+  }
+  button:hover:not(:disabled){border-color:var(--ink)}
+  button:disabled{opacity:.3; cursor:default}
+  button.primary{background:var(--red); border-color:var(--red); color:var(--red-ink); font-weight:700}
+  button.primary:hover:not(:disabled){background:var(--red-hi); border-color:var(--red-hi)}
+  button.playing, button.playing:hover:not(:disabled){
+    background:var(--red); border-color:var(--red); color:var(--red-ink);
+  }
+  .tool{border-color:var(--red); color:var(--red); font-weight:700}
+  .tool:hover:not(:disabled){background:var(--red); border-color:var(--red); color:var(--red-ink)}
+  .icon{width:44px; height:38px; padding:0; font-size:14px; display:inline-flex;
+        align-items:center; justify-content:center}
+  .fav svg{fill:none; stroke:currentColor; stroke-width:1.6; stroke-linejoin:round}
+  .fav.on svg{fill:currentColor}
+  .fav.on{color:var(--red); border-color:var(--red)}
+
+  /* ---------- impaginazione ---------- */
+  main{display:grid; grid-template-columns:1fr 340px; flex:1; min-height:0}
+  .col{padding:18px 22px; min-width:0}
+  .col + .col{border-left:1px solid var(--line)}
+
+  .panel{border:1px solid var(--line); background:var(--panel); padding:11px 12px; margin-bottom:14px}
+  .phead{display:flex; align-items:baseline; gap:10px; margin-bottom:9px;
+         flex-wrap:wrap; row-gap:6px}
+  .plabel{font-size:9.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--dim)}
+  .pright{margin-left:auto; font-size:10.5px; color:var(--dim)}
+
+  /* sintonizzatore */
+  .dial{position:relative; height:40px; background:var(--panel2); border:1px solid var(--line); overflow:hidden}
+  .dial .ticks{position:absolute; inset:0;
+    background:repeating-linear-gradient(90deg, var(--tick-a) 0 1px, transparent 1px 13px),
+               repeating-linear-gradient(90deg, var(--tick-b) 0 1px, transparent 1px 65px);
+    -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 24%,#000 66%,transparent 100%);
+            mask-image:linear-gradient(180deg,transparent 0,#000 24%,#000 66%,transparent 100%);}
+  .dial .glow{position:absolute; top:0; bottom:0; width:110px; margin-left:-55px;
+    background:radial-gradient(ellipse at center, var(--red-soft), transparent 70%);
+    transition:left .9s cubic-bezier(.16,.9,.3,1)}
+  .needle{position:absolute; top:3px; bottom:3px; width:2px; background:var(--red);
+          transition:left .9s cubic-bezier(.16,.9,.3,1)}
+  .dial.tuning .needle{transition:left .18s linear}
+  .freq{position:absolute; right:9px; bottom:2px; font-size:9.5px; letter-spacing:.08em; color:var(--dim)}
+
+  canvas#wave{display:block; width:100%; height:150px; background:var(--panel2);
+              border:1px solid var(--line); touch-action:none}
+  .transport{display:flex; gap:9px; align-items:center; flex-wrap:wrap;
+             margin-top:11px; padding-bottom:11px}
+  #len{width:140px; flex:0 0 140px}
+  #bpmIn{width:78px; flex:0 0 78px}
+  #beats{width:62px; flex:0 0 62px}
+  .hint{font-size:11px; color:var(--dim); padding-top:9px; border-top:1px solid var(--line)}
+  .hint:empty{display:none}          /* niente filetto quando non c'è nulla da dire */
+  .hint b{color:var(--ink); font-weight:400}
+  .hint .v{color:var(--red)}
+  .hint .warn{color:var(--red)}
+
+  /* ---------- generi / filtri ---------- */
+  .ftab{font-size:9.5px; letter-spacing:.16em; padding:6px 10px; border-color:transparent;
+        color:var(--dim); white-space:nowrap}
+  .ftab.sel{border-color:var(--line); background:var(--panel2); color:var(--ink)}
+  .fsum{margin-left:auto; font-size:10px; color:var(--red); letter-spacing:.06em;
+        white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis}
+  .gclear{border:none; padding:0 0 0 12px; font-size:9.5px; letter-spacing:.14em; color:var(--dim);
+          text-decoration:underline; background:none}
+  .gclear:hover{color:var(--ink); border:none}
+  .gtags{display:flex; flex-wrap:wrap; gap:5px}
+  .gtag{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+        padding:5px 8px; border:1px solid var(--line); background:transparent; color:var(--dim);
+        cursor:pointer; border-radius:0; transition:.1s; line-height:1.2}
+  .gtag:hover:not(.sel){color:var(--red); border-color:var(--red); background:var(--red-soft)}
+  .gtag.sel, .gtag.sel:hover{background:var(--red); border-color:var(--red); color:var(--red-ink)}
+  .gtag small{opacity:.6; font-size:9px; margin-left:5px}
+  .gmore{display:flex; align-items:center; gap:10px; margin-top:11px; padding-top:11px;
+         border-top:1px solid var(--line)}
+  .gmore select{flex:0 1 320px}
+  .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:11px}
+  label{display:block; font-size:9.5px; letter-spacing:.18em; text-transform:uppercase;
+        color:var(--dim); margin-bottom:5px}
+  select, input[type=text], input[type=number]{
+    width:100%; font-family:var(--mono); font-size:12.5px; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--line); border-radius:0; padding:7px 8px;
+  }
+  select:focus, input:focus{outline:none; border-color:var(--red)}
+  .themepick{margin-left:auto; flex:0 0 auto; text-align:right}
+  .themepick label{margin-bottom:6px; letter-spacing:.22em}
+  .themepick select{width:auto; min-width:158px; font-size:11px; padding:6px 8px}
+  .check{display:flex; align-items:center; gap:9px; padding-top:22px}
+  .check2{display:inline-flex; align-items:center; gap:8px; font-size:9.5px; letter-spacing:.1em;
+          text-transform:uppercase; color:var(--ink); cursor:pointer; white-space:nowrap}
+  .check2:has(input:disabled){opacity:.35; cursor:default}
+  input[type=checkbox]{appearance:none; -webkit-appearance:none; width:14px; height:14px; flex:0 0 14px;
+    border:1px solid var(--line); background:transparent; border-radius:0; cursor:pointer; margin:0}
+  input[type=checkbox]:checked{background:var(--red); border-color:var(--red)}
+  .check label{margin:0; text-transform:none; letter-spacing:0; font-size:12px; color:var(--ink)}
+
+  /* ---------- parametri ---------- */
+  .radiorow{display:flex; gap:8px; align-items:center; margin-top:11px}
+  .spacer{flex:1}
+  .pname{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
+  .pval{font-size:17px; letter-spacing:.01em; white-space:nowrap}
+  .pval small{font-size:10px; color:var(--dim); margin-left:2px; letter-spacing:.1em}
+  input[type=range]{-webkit-appearance:none; appearance:none; width:100%; background:transparent;
+                    height:20px; margin:0; cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:2px; background:var(--ink)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:9px; height:19px;
+    background:var(--red); border:none; margin-top:-8.5px}
+  input[type=range]::-moz-range-track{height:2px; background:var(--ink)}
+  input[type=range]::-moz-range-thumb{width:9px; height:19px; background:var(--red);
+    border:none; border-radius:0}
+  .prow{display:flex; gap:9px; align-items:center; flex-wrap:wrap; padding:11px 0;
+        border-top:1px solid var(--line)}
+  .destname{font-size:12px; max-width:250px; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap}
+  .destname.dim{color:var(--dim)}
+
+  /* ---------- elenchi ---------- */
+  .tabs{display:flex; gap:6px; margin:18px 0 8px}
+  .tab{font-size:9.5px; letter-spacing:.2em; padding:6px 10px; border-color:transparent; color:var(--dim)}
+  .tab.sel{border-color:var(--line); background:var(--panel2); color:var(--ink)}
+  ul{list-style:none; margin:0; padding:0; border-top:1px solid var(--line)}
+  li{display:flex; align-items:center; gap:10px; padding:8px 4px; cursor:pointer;
+     border-bottom:1px solid var(--line)}
+  li:hover{background:var(--panel)}
+  li .t{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px}
+  /* `flex:0 0 auto` non si comprimeva mai: schiacciava il nome a larghezza zero
+     e usciva dal riquadro. Ora cede spazio e taglia con i puntini. */
+  li .m{font-size:10px; color:var(--dim); letter-spacing:.06em;
+        flex:0 1 auto; min-width:0; max-width:52%;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  li .x{color:var(--dim); padding:0 4px}
+  li .x:hover{color:var(--red)}
+  .empty{color:var(--dim); font-size:11.5px; padding:10px 4px}
+
+  /* ---------- barra di stato ---------- */
+  /* Vive dentro la colonna del looper: l'altezza della cronologia non lo sposta piu'. */
+  footer.help{padding:15px 0 4px; border-top:1px solid var(--line); font-size:10.5px; color:var(--dim); line-height:1.8}
+  footer.help a{color:var(--dim)}
+  kbd{font-size:9.5px; border:1px solid var(--line); padding:1px 5px; color:var(--ink)}
+
+  @media (max-width:900px){
+    main{grid-template-columns:1fr}
+    .col + .col{border-left:none; border-top:1px solid var(--line)}
+  }
+</style>
+<script>
+/* Va qui, non in fondo: il tema deve essere gia' addosso a <html> prima che il
+   documento venga dipinto, altrimenti a ogni apertura si vede un lampo della
+   palette chiara. Legge la stessa chiave che usa store.set("theme", ...). */
+(function(){
+  try{
+    var t = JSON.parse(localStorage.getItem("rr_theme"));
+    if(t && t !== "default") document.documentElement.dataset.theme = t;
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+<div class="topbar"></div>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>RADIO ROULETTE</h1>
+      <div class="sub">web radio &middot; looper</div>
+      <div class="onair">
+        <span class="led" id="led"></span><span id="statusTxt">ready</span>
+      </div>
+    </div>
+    <div class="logo" id="logo"></div>
+    <div class="fileinfo">
+      <span class="fname" id="name">Press TUNE</span>
+      <span class="meta" id="where">a random station from anywhere in the world</span>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="themepick">
+      <label for="theme">Theme</label>
+      <select id="theme">
+        <option value="default">Default &middot; paper</option>
+        <option value="sepia">Sepia &middot; sienna</option>
+        <option value="midnight">Midnight &middot; amber</option>
+        <option value="ember">Ember &middot; red</option>
+        <option value="phosphor">Phosphor &middot; green</option>
+      </select>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ colonna sinistra: sintonia + looper ============ -->
+    <section class="col">
+      <div class="panel">
+        <div class="phead"><span class="plabel">Tuner</span></div>
+        <div class="dial" id="dial">
+          <div class="ticks"></div>
+          <div class="glow" id="glow" style="left:50%"></div>
+          <div class="needle" id="needle" style="left:50%"></div>
+          <div class="freq" id="freq">— — —</div>
+        </div>
+        <div class="radiorow">
+          <button class="primary" id="tune">Tune</button>
+          <button class="icon" id="play" title="Radio play / pause (space)" disabled>&#9654;</button>
+          <button class="icon fav" id="fav" title="Favourite (F)" disabled>
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+              <path d="M12 3.5 14.11 10 20.94 10 15.41 14.01 17.53 20.5 12 16.49 6.47 20.5 8.59 14.01 3.06 10 9.89 10Z"/>
+            </svg>
+          </button>
+          <button id="site" title="Station website" disabled>Web</button>
+          <span class="spacer"></span>
+          <span class="pright" id="poolInfo">waiting…</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <button class="ftab sel" id="tabGen" data-pane="gen">Genres</button>
+          <button class="ftab" id="tabAdv" data-pane="adv">More filters</button>
+          <span class="fsum" id="gsel"></span>
+          <button class="gclear" id="gclear">reset</button>
+        </div>
+        <div id="genpane">
+          <div class="gtags" id="gtags"></div>
+          <div class="gmore">
+            <label for="fTag" style="margin:0; flex:0 0 auto">full list</label>
+            <select id="fTag"><option value="">Any</option></select>
+          </div>
+        </div>
+        <div class="advpane" id="advpane" hidden>
+          <div class="grid2">
+            <div>
+              <label for="fCountry">Country</label>
+              <select id="fCountry"><option value="">Worldwide</option></select>
+            </div>
+            <div>
+              <label for="fName">Search by name</label>
+              <input type="text" id="fName" placeholder="e.g. Rinse, Nova…">
+            </div>
+            <div>
+              <label for="fBitrate">Minimum bitrate</label>
+              <select id="fBitrate">
+                <option value="">Any</option>
+                <option value="64">64 kbps</option>
+                <option value="128" selected>128 kbps</option>
+                <option value="192">192 kbps</option>
+                <option value="256">256 kbps</option>
+              </select>
+            </div>
+            <div class="check">
+              <input type="checkbox" id="fHttps" checked>
+              <label for="fHttps">HTTPS streams only</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <span class="plabel">Loop</span>
+          <span class="pright" id="loopState">no buffer</span>
+        </div>
+        <canvas id="wave" title="Drag the flags to trim start and end"></canvas>
+
+        <div class="transport">
+          <button class="primary" id="cap" title="Capture the last few seconds (C)" disabled>Capture</button>
+          <button class="icon" id="loopPlay" title="Play the sample as a loop — press again to stop (L)" disabled>
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18.36 5.64A9 9 0 1 1 12 3"/>
+              <path d="M9.3 0.5 12 3 9.3 5.5"/>
+              <path d="M9.5 8.6 16.3 12 9.5 15.4Z" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+          <button class="icon" id="oneShot" title="Play the sample once, then silence (O)" disabled>&#9654;</button>
+          <button id="wav" draggable="true" disabled
+                  title="Click to export the WAV · drag onto the RX icon, into Ableton or the Finder">Export</button>
+          <span class="spacer"></span>
+          <label class="check2"><input type="checkbox" id="duck" checked> mute tuner</label>
+          <label class="check2" title="Start the loop on the last detected beat">
+            <input type="checkbox" id="align" disabled> lock to beat
+          </label>
+        </div>
+
+        <div class="prow">
+          <span class="pname">Save to</span>
+          <span class="destname dim" id="destTxt">Downloads &middot; browser default</span>
+          <button id="destPick" title="Pick a folder: every export is written straight into it">Folder&hellip;</button>
+          <button id="destClear" title="Go back to the browser's download folder" hidden>Downloads</button>
+          <span class="spacer"></span>
+        </div>
+        <div class="hint" id="destNote"></div>
+
+        <div class="prow">
+          <button class="tool" id="autoBpm" title="Detect the tempo of the track on air (B)" disabled>Auto BPM</button>
+          <button class="tool" id="tap" title="Tap the tempo with the mouse to set the BPM (T)">Tap</button>
+          <span class="pname">Length</span>
+          <span class="pval" id="lenVal">2.00 s</span>
+          <input type="range" id="len" min="0.25" max="8" step="0.05" value="2">
+          <span class="spacer"></span>
+          <span class="pname">BPM</span>
+          <span class="pval" id="bpmBig">120.0</span>
+          <input type="number" id="bpmIn" min="40" max="240" step="0.1" value="120" title="Reference BPM">
+          <span class="pname">Beats</span>
+          <select id="beats">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+          </select>
+        </div>
+        <div class="hint" id="bpmOut"></div>
+      </div>
+
+      <footer class="help">
+        <kbd>space</kbd> play/pause &middot; <kbd>N</kbd> next station &middot; <kbd>F</kbd> favourite &middot;
+        <kbd>C</kbd> capture &middot; <kbd>L</kbd> loop &middot; <kbd>O</kbd> one shot &middot;
+        <kbd>B</kbd> auto BPM &middot; <kbd>T</kbd> tap<br>
+        Drag the flags on the waveform to trim start and end: 0.5 s of context at the head, 1.5 s at the tail.
+        The <b>Export</b> button can also be dragged straight onto the iZotope RX icon, into Ableton or the Finder.
+        <b>Save to</b> writes the WAV straight into a folder you pick; without one it goes to the browser's
+        download folder.<br>
+        Station data: <a href="https://www.radio-browser.info" target="_blank" rel="noopener">Radio Browser</a> &middot;
+        streams come directly from the broadcasters' servers.
+      </footer>
+    </section>
+
+    <!-- ============ colonna destra: filtri + elenchi ============ -->
+    <aside class="col">
+
+      <div class="tabs">
+        <button class="tab sel" data-tab="hist">History</button>
+        <button class="tab" data-tab="favs">Favourites</button>
+      </div>
+      <ul id="list"></ul>
+    </aside>
+  </main>
+
+</div>
+
+<script>
+
+(function(){
+"use strict";
+
+/* ================= storage ================= */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("rr_"+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("rr_"+k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ================= API ================= */
+const MIRRORS = [
+  "https://all.api.radio-browser.info",
+  "https://de2.api.radio-browser.info",
+  "https://de1.api.radio-browser.info",
+  "https://nl1.api.radio-browser.info",
+  "https://at1.api.radio-browser.info"
+];
+let apiBase = null;
+async function api(path){
+  const order = apiBase ? [apiBase].concat(MIRRORS.filter(m => m !== apiBase)) : MIRRORS;
+  let lastErr;
+  for(const base of order){
+    try{
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 9000);
+      const res = await fetch(base + path, { signal: ctrl.signal });
+      clearTimeout(t);
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      apiBase = base;
+      return await res.json();
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error("no Radio Browser mirror reachable");
+}
+
+/* ================= DOM ================= */
+const $ = id => document.getElementById(id);
+const elName=$("name"), elWhere=$("where"), elChips=$("chips"), elLogo=$("logo");
+const elLed=$("led"), elStatus=$("statusTxt");
+const btnTune=$("tune"), btnPlay=$("play"), btnFav=$("fav"), btnSite=$("site");
+const dial=$("dial"), needle=$("needle"), glow=$("glow"), freq=$("freq");
+const poolInfo=$("poolInfo"), listEl=$("list");
+const btnCap=$("cap"), btnLoopPlay=$("loopPlay"), btnOne=$("oneShot"), btnWav=$("wav"), btnTap=$("tap"), btnAuto=$("autoBpm");
+const lenSl=$("len"), lenVal=$("lenVal"), duck=$("duck"), alignCb=$("align");
+const loopState=$("loopState"), bpmIn=$("bpmIn"), beatsSel=$("beats"), bpmOut=$("bpmOut");
+const wave=$("wave"), gtags=$("gtags"), gsel=$("gsel");
+const destTxt=$("destTxt"), destNote=$("destNote"), btnDest=$("destPick"), btnDestClear=$("destClear");
+const themeSel=$("theme");
+
+/* ================= audio: due elementi =================
+   audioC = crossOrigin "anonymous", cablato nel grafo Web Audio (cattura + analisi).
+   audioP = elemento pulito, mai toccato dal grafo: fallback per stream senza CORS.
+   Separati per forza: un elemento passato da createMediaElementSource, se poi carica
+   una risorsa "tainted", produce silenzio totale.                                     */
+const audioC = new Audio(); audioC.crossOrigin = "anonymous"; audioC.preload = "none";
+const audioP = new Audio(); audioP.preload = "none";
+let audio = audioC, currentMode = "cors";
+
+/* ================= stato ================= */
+let pool=[], current=null, tab="hist";
+let seen = new Set(store.get("seen", []));
+let broken = new Set(store.get("broken", []));
+let favs = store.get("favs", []);
+let hist = store.get("hist", []);
+let watchdog=null, tuningAnim=null, failStreak=0, busy=false;
+const canHls = !!audioP.canPlayType("application/vnd.apple.mpegurl");
+
+const RING_SEC = 12;
+let ctx=null, srcNode=null, radioGain=null, proc=null, loopGain=null;
+let ring=null, ringLen=0, totalAbs=0;
+let loopBuf=null, loopSrc=null, looping=false, captureOK=false;
+let regionBuf=null, regionStartAbs=0, selStart=0, selEnd=0, selEdited=false, capAligned=false;
+let oneShotSrc=null, oneShotHeld=false;   // dopo un one shot la radio NON rientra da sola
+let lastCorsErr=null, forceMute=false;    // diagnostica (tasto D / window.__rr)
+
+/* Safari: MediaElementAudioSourceNode resta MUTO sugli stream dal vivo (Icecast MP3/AAC,
+   HLS) pur riproducendoli — misurato con WKWebView: picco 0 in ogni variante, mentre con
+   file statici funziona. Lì si aggira l'elemento media: fetch dello stream, parsing dei
+   frame, WebCodecs AudioDecoder, riproduzione via Web Audio. Il tap (ScriptProcessor) è
+   puro Web Audio e funziona: il ring riceve esattamente ciò che si sente.                */
+const UA = navigator.userAgent;
+const useDecode = /AppleWebKit/.test(UA) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox/.test(UA)
+                  && typeof AudioDecoder !== "undefined" && typeof EncodedAudioChunk !== "undefined";
+let streamMode = "tap";                   // "tap" = elemento media; "decode" = fetch + AudioDecoder
+let plainReason = "";                     // perché si è ripiegati sull'elemento semplice
+let decBus = null;
+const dec = { ctrl:null, decoder:null, fmt:null, bytes:new Uint8Array(0), ts:0, nextTime:0,
+              playing:false, gotAudio:false, frames:0, pending:[], pendingN:0, sources:[] };
+let diagUrl=null, corsPlayed=false;
+let loopLenSec = 2;   // durata esatta: lo slider ha passo 0.05 e quantizzerebbe
+                      // 1.875 s (4 beat @128) a 1.90, mandando il loop fuori tempo
+/* griglia beat rilevata */
+let beatPeriod=0, beatAnchorAbs=0, beatBpm=0;
+
+/* ================= UI helper ================= */
+function setStatus(text, kind){
+  elStatus.textContent = text;
+  elLed.className = "led" + (kind ? " " + kind : "");
+}
+function sweepDial(){
+  dial.classList.add("tuning");
+  let n = 0;
+  clearInterval(tuningAnim);
+  tuningAnim = setInterval(() => {
+    const p = (5 + Math.random()*90).toFixed(1) + "%";
+    needle.style.left = p; glow.style.left = p;
+    freq.textContent = (87.5 + Math.random()*20.5).toFixed(1) + " MHz";
+    if(++n > 14) settleDial();
+  }, 70);
+}
+function settleDial(){
+  clearInterval(tuningAnim); tuningAnim = null;
+  dial.classList.remove("tuning");
+  const p = (8 + Math.random()*84).toFixed(1) + "%";
+  needle.style.left = p; glow.style.left = p;
+  freq.textContent = (87.5 + Math.random()*20.5).toFixed(1) + " MHz";
+}
+function chip(text, cls){
+  if(!text) return;
+  const s = document.createElement("span");
+  s.className = "chip" + (cls ? " " + cls : "");
+  s.textContent = text;
+  elChips.appendChild(s);
+}
+function render(st){
+  elName.textContent = st.name.trim() || "(unnamed)";
+  elWhere.textContent = [st.country, st.state].filter(Boolean).join(" · ") || "location unknown";
+  elChips.innerHTML = "";
+  // Il tag che ha fatto match va mostrato per primo: erano i primi 4 in ordine
+  // alfabetico, e spesso quello selezionato restava invisibile (sembrava ignorato).
+  const active = ($("fTag").value || "").toLowerCase();
+  let tags = (st.tags || "").split(",").map(t => t.trim()).filter(Boolean);
+  if(active){
+    const hit = tags.filter(t => t.toLowerCase() === active);
+    tags = hit.concat(tags.filter(t => t.toLowerCase() !== active));
+  }
+  tags.slice(0,4).forEach(t => chip(t, (active && t.toLowerCase() === active) ? "match" : ""));
+  if(st.codec) chip(st.codec);
+  if(st.bitrate) chip(st.bitrate + " kbps");
+  if(st.url_resolved.startsWith("https:")) chip("https", "on");
+  if(st.language) chip(st.language);
+  elLogo.textContent = "";
+  if(st.favicon){
+    const img = new Image();
+    img.referrerPolicy = "no-referrer";
+    img.onload = () => { elLogo.innerHTML = ""; elLogo.appendChild(img); };
+    img.src = st.favicon;
+  }
+  btnPlay.disabled = false;
+  btnFav.disabled  = false;
+  btnSite.disabled = !st.homepage;
+  btnFav.classList.toggle("on", isFav(st));
+}
+
+/* ================= grafo Web Audio ================= */
+function ensureGraph(){
+  if(ctx){ if(ctx.state === "suspended") ctx.resume(); return true; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return false;
+  try{
+    ctx = new AC();
+    srcNode   = ctx.createMediaElementSource(audioC);
+    radioGain = ctx.createGain();
+    srcNode.connect(radioGain);
+    radioGain.connect(ctx.destination);
+
+    // tap di registrazione PRIMA di radioGain: il ducking non svuota il buffer
+    ringLen = Math.ceil(RING_SEC * ctx.sampleRate);
+    ring = [new Float32Array(ringLen), new Float32Array(ringLen)];
+    totalAbs = 0;
+    proc = ctx.createScriptProcessor(4096, 2, 2);
+    proc.onaudioprocess = onAudio;
+    const sink = ctx.createGain(); sink.gain.value = 0;
+    srcNode.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+
+    // modalità decode: i buffer decodificati entrano qui, e da qui vanno sia alle casse
+    // (attraverso radioGain, quindi duckabili) sia al tap. Gli ingressi del tap si sommano:
+    // in modalità tap questo bus tace, in modalità decode tace l'elemento.
+    decBus = ctx.createGain();
+    decBus.connect(radioGain);
+    decBus.connect(proc);
+
+    loopGain = ctx.createGain();
+    loopGain.gain.value = 1;
+    loopGain.connect(ctx.destination);
+
+    if(ctx.state === "suspended") ctx.resume();
+    applyVolume();
+    return true;
+  }catch(e){
+    ctx = null; srcNode = null; radioGain = null;
+    return false;
+  }
+}
+
+function onAudio(e){
+  const inp = e.inputBuffer, n = inp.length, nch = inp.numberOfChannels;
+  let p = totalAbs % ringLen;
+  for(let c=0;c<2;c++){
+    const src = inp.getChannelData(nch > c ? c : 0);
+    const dst = ring[c];
+    let q = p;
+    for(let i=0;i<n;i++){ dst[q] = src[i]; if(++q === ringLen) q = 0; }
+  }
+  totalAbs += n;
+  if(captureOK && buffered() > ctx.sampleRate * 0.5){
+    if(btnCap.disabled) btnCap.disabled = false;
+    if(btnAuto.disabled && autoBpmReady()) btnAuto.disabled = false;
+  }
+}
+function buffered(){ return Math.min(totalAbs, ringLen); }
+/* `runAutoBpm` chiede almeno due finestre: il vincolo e' che entri la SECONDA
+   della lista, non la prima. Stesso margine di 4096 campioni usato la' sotto. */
+function autoBpmReady(){
+  return !!ctx && buffered() >= BPM_WINS[1]*ctx.sampleRate + 4096;
+}
+
+/* legge `len` campioni assoluti a partire da startAbs */
+function readAbs(c, startAbs, len, dst){
+  const r = ring[c];
+  // l'indice DEVE essere intero: su un typed array un indice frazionario dà undefined
+  let p = ((Math.round(startAbs) % ringLen) + ringLen) % ringLen;
+  for(let i=0;i<len;i++){ dst[i] = r[p]; if(++p >= ringLen) p = 0; }
+}
+
+/* Il pulsante deve mostrare ciò che SI SENTE, non lo stato dell'elemento <audio>:
+   se il looper ha silenziato la radio, per chi ascolta è ferma, quindi torna ▶.
+   Verde = sta suonando davvero. */
+function radioPlaying(){
+  return streamMode === "decode" ? dec.playing : (!!current && !audio.paused);
+}
+function radioAudible(){
+  return radioPlaying() && !(duck.checked && (looping || oneShotHeld));
+}
+function syncTransport(){
+  const on = radioAudible();
+  btnPlay.textContent = on ? "❚❚" : "▶";
+  btnPlay.classList.toggle("playing", on);
+  btnLoopPlay.classList.toggle("playing", looping);
+  btnOne.classList.toggle("playing", !!oneShotSrc);
+}
+
+function applyVolume(){
+  // `oneShotHeld` resta acceso dopo la fine del campione: il one shot finisce nel
+  // silenzio, non nella radio. Si torna ad ascoltare con ▶, togliendo "silenzia
+  // radio" o sintonizzando un'altra stazione.
+  const v = (forceMute || (duck.checked && (looping || oneShotHeld))) ? 0 : 1;
+  if(radioGain){ audioC.volume = 1; radioGain.gain.value = v; }
+  else audioC.volume = v;
+  audioP.volume = v;
+  syncTransport();
+}
+
+/* ================= analisi tempo =================
+   decimazione ×4 → spectral flux (FFT 512) → autocorrelazione dell'onset envelope
+   con somma armonica e prior log-normale su 120 BPM → interpolazione parabolica.  */
+const DEC = 4, NFFT = 512, HOP = 64;
+/* Finestre di analisi di Auto BPM, in secondi. Una sola fonte di verita': la stessa
+   lista decide quando il pulsante si accende e quali finestre vengono poi girate.
+   Erano due numeri separati e sono andati fuori sincrono — il pulsante si accendeva
+   a 6.6 s mentre l'analisi ne pretendeva ~9.1, e in mezzo rispondeva "need more
+   audio in memory" a un tasto che si era appena offerto.
+   L'ultima e' 11 e non 12 di proposito: il filtro in runAutoBpm chiede
+   `w*sr <= buffered() - 4096` e il ring tiene esattamente `RING_SEC*sr`, quindi una
+   finestra da 12 s non entrerebbe MAI, nemmeno a buffer pieno — restavano due sole
+   finestre e la concordanza votava su un confronto in meno. Non riportarla a 12: se
+   un giorno cambia RING_SEC, l'ultima finestra deve restare ~1 s sotto il ring. */
+const BPM_WINS = [6, 9, 11];
+const LOWBIN = 11;        // ~250 Hz: banda del kick, usata per agganciare il battere
+const ONSET_LAG_S = 0.0124;  // s: il rilevatore di onset anticipa il beat di ~12 ms
+                             // (bias misurato su transienti sintetici, vedi test BPM)
+
+function fft(re, im){
+  const n = re.length;
+  for(let i=1, j=0; i<n; i++){
+    let bit = n >> 1;
+    for(; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if(i < j){ let t=re[i]; re[i]=re[j]; re[j]=t; t=im[i]; im[i]=im[j]; im[j]=t; }
+  }
+  for(let len=2; len<=n; len<<=1){
+    const ang = -2*Math.PI/len, wr = Math.cos(ang), wi = Math.sin(ang), half = len>>1;
+    for(let i=0;i<n;i+=len){
+      let cr=1, ci=0;
+      for(let k=0;k<half;k++){
+        const ar=re[i+k], ai=im[i+k];
+        const br=re[i+k+half], bi=im[i+k+half];
+        const vr=br*cr - bi*ci, vi=br*ci + bi*cr;
+        re[i+k]=ar+vr; im[i+k]=ai+vi;
+        re[i+k+half]=ar-vr; im[i+k+half]=ai-vi;
+        const ncr = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = ncr;
+      }
+    }
+  }
+}
+
+function onsetEnvelope(mono, maxBinArg){
+  const frames = Math.floor((mono.length - NFFT)/HOP) + 1;
+  if(frames < 8) return new Float32Array(0);
+  const win = new Float32Array(NFFT);
+  for(let i=0;i<NFFT;i++) win[i] = 0.5 - 0.5*Math.cos(2*Math.PI*i/NFFT);
+  const re = new Float32Array(NFFT), im = new Float32Array(NFFT);
+  const half = NFFT>>1;
+  const maxBin = Math.min(half, maxBinArg || half);
+  const prev = new Float32Array(half);
+  const env = new Float32Array(frames);
+  for(let f=0; f<frames; f++){
+    const off = f*HOP;
+    for(let i=0;i<NFFT;i++){ re[i] = mono[off+i]*win[i]; im[i] = 0; }
+    fft(re, im);
+    let flux = 0;
+    for(let b=1;b<maxBin;b++){
+      const mag = Math.sqrt(re[b]*re[b] + im[b]*im[b]);
+      const m = Math.log(1 + 40*mag);
+      const d = m - prev[b];
+      if(d > 0) flux += d;
+      prev[b] = m;
+    }
+    env[f] = flux;
+  }
+  return env;
+}
+
+/* rimuove la media mobile, rettifica e normalizza */
+function sharpen(env){
+  const n = env.length, out = new Float32Array(n), W = 16;
+  let sum = 0;
+  for(let i=0;i<n;i++){
+    const lo = Math.max(0, i-W), hi = Math.min(n-1, i+W);
+    if(i === 0){ for(let j=lo;j<=hi;j++) sum += env[j]; }
+    else{
+      const pl = Math.max(0, i-1-W), ph = Math.min(n-1, i-1+W);
+      if(hi > ph) sum += env[hi];
+      if(lo > pl) sum -= env[pl];
+    }
+    out[i] = Math.max(0, env[i] - sum/(hi-lo+1));
+  }
+  let mean = 0; for(let i=0;i<n;i++) mean += out[i]; mean /= n || 1;
+  let sd = 0; for(let i=0;i<n;i++){ const d = out[i]-mean; sd += d*d; }
+  sd = Math.sqrt(sd/(n||1)) || 1;
+  for(let i=0;i<n;i++) out[i] = (out[i]-mean)/sd;
+  return out;
+}
+
+/* nucleo: dall'onset envelope al tempo. Funzione pura → testabile fuori dal browser. */
+function tempoFromEnv(env, envRate, envLow){
+  const dFull = sharpen(env);
+  const dLow  = (envLow && envLow.length === env.length) ? sharpen(envLow) : null;
+  // Il tempo si cerca sulla somma banda-piena + banda-kick: sulla sola banda piena gli
+  // hi-hat in ottavi pareggiano battere e levare e l'autocorrelazione confonde P con 1.5P.
+  let d = dFull;
+  if(dLow){
+    d = new Float32Array(dFull.length);
+    for(let i=0;i<d.length;i++) d[i] = dFull[i] + dLow[i];
+  }
+  const n = d.length;
+  if(n < 32) return null;
+  const minBpm = 60, maxBpm = 200;
+  const minLag = Math.max(2, Math.floor(60/maxBpm*envRate));
+  const maxLag = Math.min(n-4, Math.ceil(60/minBpm*envRate));
+  if(maxLag <= minLag) return null;
+
+  const acMax = Math.min(maxLag*4, n-2);
+  const ac = new Float32Array(acMax+2);
+  for(let lag=minLag; lag<=acMax; lag++){
+    let s = 0; const lim = n-lag;
+    for(let i=0;i<lim;i++) s += d[i]*d[i+lag];
+    ac[lag] = s/lim;
+  }
+
+  // Il bonus armonico da solo premia i lag a 1.5x il periodo vero, producendo errori di 2/3.
+  // Scarto i candidati che non sono un picco loro stessi.
+  let acPeak = 0;
+  for(let lag=minLag; lag<=maxLag; lag++) if(ac[lag] > acPeak) acPeak = ac[lag];
+  const acFloor = acPeak * 0.30;
+
+  // Fase 1 — miglior candidato per sola periodicità, senza prior.
+  const harm = new Float32Array(maxLag+1);
+  let bestRawLag = 0, bestRaw = -Infinity;
+  for(let lag=minLag; lag<=maxLag; lag++){
+    if(ac[lag] < acFloor) continue;
+    let h = ac[lag];
+    if(lag*2 <= acMax) h += 0.5*ac[lag*2];    // se `lag` è il periodo vero,
+    if(lag*3 <= acMax) h += 0.25*ac[lag*3];   // anche 2x e 3x hanno un picco
+    harm[lag] = h;
+    if(h > bestRaw){ bestRaw = h; bestRawLag = lag; }
+  }
+  if(!bestRawLag) return null;
+
+  // Fase 2 — il prior su 120 BPM decide SOLO fra le ottave del candidato.
+  // Lasciandolo libero su tutti i lag arbitrava anche rapporti 2/3 (174 -> 116 BPM),
+  // che non sono ambiguità musicali ma errori: l'ottava sì, il resto no.
+  function bestNear(target){
+    const t = Math.round(target);
+    let L = 0, v = -Infinity;
+    for(let lag=Math.max(minLag, t-2); lag<=Math.min(maxLag, t+2); lag++){
+      if(harm[lag] > v){ v = harm[lag]; L = lag; }
+    }
+    return (L && v > 0) ? L : 0;
+  }
+  let bestLag = bestRawLag, best = -Infinity;
+  [0.25, 0.5, 1, 2, 4].forEach(function(m){
+    const lag = bestNear(bestRawLag*m);
+    if(!lag) return;
+    const bpm = 60*envRate/lag;
+    const sc = harm[lag]*Math.exp(-0.5*Math.pow(Math.log(bpm/120)/0.55, 2));
+    if(sc > best){ best = sc; bestLag = lag; }
+  });
+  if(!bestLag) return null;
+
+  // interpolazione parabolica sul picco di autocorrelazione
+  let lagF = bestLag;
+  if(bestLag > minLag && bestLag < acMax){
+    const y0 = ac[bestLag-1], y1 = ac[bestLag], y2 = ac[bestLag+1];
+    const den = y0 - 2*y1 + y2;
+    if(den !== 0){
+      const dx = 0.5*(y0 - y2)/den;
+      if(Math.abs(dx) < 1) lagF = bestLag + dx;
+    }
+  }
+
+  // Fase: treno di impulsi al periodo trovato, offset con energia media massima.
+  // Sulla banda piena gli hi-hat in ottavi rendono battere e levare equivalenti e
+  // l'aggancio finisce sul levare: cerco la fase sulla banda bassa (kick), che il
+  // battere lo marca, e torno alla banda piena solo se lì non c'è nulla di netto.
+  function phaseOf(sig){
+    let bp = 0, bv = -Infinity;
+    const steps = Math.max(1, Math.round(lagF));
+    for(let p=0;p<steps;p++){
+      let s = 0, c = 0;
+      for(let t=p; t<sig.length; t+=lagF){
+        const i = Math.round(t);
+        if(i < sig.length){ s += sig[i]; c++; }
+      }
+      if(c){ const v = s/c; if(v > bv){ bv = v; bp = p; } }
+    }
+    return { phase: bp, val: bv };
+  }
+  let pick = phaseOf(dFull);
+  if(dLow){
+    const pLow = phaseOf(dLow);
+    if(pLow.val > 0.35) pick = pLow;      // il kick c'è: fidati del battere
+  }
+  const bestPh = pick.phase, bestPhVal = pick.val;
+
+  return {
+    lagF: lagF,
+    bpm: 60*envRate/lagF,
+    phase: bestPh,
+    lastBeatEnv: bestPh + Math.floor((n-1-bestPh)/lagF)*lagF
+  };
+}
+
+/* Una singola stima su una finestra di `winSec` secondi. */
+function estimateOn(winSec){
+  if(!ctx) return null;
+  const sr = ctx.sampleRate;
+  const winLen = Math.min(Math.floor(winSec*sr), buffered() - 2048);
+  if(winLen < sr*3.5) return null;
+  const startAbs = totalAbs - winLen;
+
+  // downmix + decimazione x4 (media a blocchi: fa anche da anti-alias grezzo)
+  const a = new Float32Array(winLen), b = new Float32Array(winLen);
+  readAbs(0, startAbs, winLen, a);
+  readAbs(1, startAbs, winLen, b);
+  const decLen = Math.floor(winLen/DEC);
+  const mono = new Float32Array(decLen);
+  for(let i=0;i<decLen;i++){
+    let s = 0;
+    for(let k=0;k<DEC;k++){ const j = i*DEC+k; s += (a[j]+b[j])*0.5; }
+    mono[i] = s/DEC;
+  }
+
+  // Su silenzio l'autocorrelazione è tutta a zero e la scelta del lag diventa arbitraria
+  // ma deterministica: tutte le finestre darebbero lo stesso valore inventato e la
+  // concordanza direbbe "alta". Meglio non rispondere affatto.
+  let pk = 0;
+  for(let i=0;i<decLen;i++){ const v = Math.abs(mono[i]); if(v > pk) pk = v; }
+  if(pk < 1e-4) return null;
+
+  const envRate = sr/DEC/HOP;
+  const env = onsetEnvelope(mono);
+  if(env.length < 32) return null;
+  const t = tempoFromEnv(env, envRate, onsetEnvelope(mono, LOWBIN));
+  if(!t) return null;
+
+  // frame f copre i campioni decimati [f*HOP, f*HOP+NFFT): uso il centro finestra
+  const corrDec = ONSET_LAG_S * (sr/DEC);
+  const anchorAbs = startAbs + Math.round((t.lastBeatEnv*HOP + NFFT/2 + corrDec) * DEC);
+  let bpm = t.bpm, period = t.lagF*HOP*DEC;      // campioni per beat, sample rate originale
+  while(bpm < 70){ bpm *= 2; period /= 2; }      // riporta in un range utilizzabile
+  while(bpm > 180){ bpm /= 2; period *= 2; }
+  return { bpm: bpm, period: period, anchorAbs: anchorAbs, win: winSec };
+}
+
+/* Due tempi diversi sono la stessa cosa se coincidono a meno di un'ottava. */
+function foldBpm(b){ let x = b; while(x < 90) x *= 2; while(x >= 180) x /= 2; return x; }
+function sameTempo(x, y){ const f = foldBpm(x); return Math.abs(f - foldBpm(y))/f < 0.02; }
+
+/* La periodicità assoluta non separa musica vera da parlato: sul broadcast reale
+   (compresso, riverberato, cantato) sta fra 0.02 e 0.31 sia quando la stima è giusta
+   sia quando è sbagliata. Quello che separa davvero è la CONCORDANZA fra finestre di
+   analisi diverse: una stima corretta non si muove, una casuale salta ogni volta.  */
+function agreeTempo(ests){
+  if(!ests.length) return null;
+  let best = null;
+  for(const e of ests){
+    const cluster = ests.filter(o => sameTempo(e.bpm, o.bpm));
+    if(!best || cluster.length > best.cluster.length ||
+       (cluster.length === best.cluster.length && e.win > best.rep.win)){
+      // rappresentante = la finestra più lunga del gruppo (più dati sotto la stima)
+      const rep = cluster.reduce((x, y) => y.win > x.win ? y : x);
+      best = { cluster: cluster, rep: rep };
+    }
+  }
+  return { bpm: best.rep.bpm, period: best.rep.period, anchorAbs: best.rep.anchorAbs,
+           votes: best.cluster.length, tries: ests.length };
+}
+
+function runAutoBpm(){
+  if(!ctx || !captureOK) return;
+  const sr = ctx.sampleRate;
+  const wins = BPM_WINS.filter(w => w*sr <= buffered() - 4096);
+  if(wins.length < 2){
+    bpmOut.innerHTML = "<span class='warn'>need more audio in memory</span> — let it play a few more seconds";
+    return;
+  }
+  btnAuto.disabled = true;
+  const ests = [];
+  let i = 0;
+  (function step(){
+    bpmOut.innerHTML = "analysing… window " + (i+1) + "/" + wins.length;
+    // una finestra per tick: ogni analisi blocca il main thread ~200-400 ms
+    setTimeout(function(){
+      try{ const e = estimateOn(wins[i]); if(e) ests.push(e); }catch(err){}
+      if(++i < wins.length) step(); else finishAutoBpm(ests, wins.length);
+    }, 20);
+  })();
+}
+
+function finishAutoBpm(ests, tries){
+  btnAuto.disabled = !autoBpmReady();
+  const r = agreeTempo(ests);
+  if(!ests.length){
+    bpmOut.innerHTML = "<span class='warn'>no audio to analyse</span> — silence or interrupted stream";
+    return;
+  }
+  if(!r || r.votes < 2){
+    bpmOut.innerHTML = "<span class='warn'>tempo uncertain</span> — the " + tries +
+      " analysis windows disagree (" +
+      ests.map(e => e.bpm.toFixed(0)).join(", ") + " BPM)" +
+      ": speech, a track with no clear pulse, or a mix in progress";
+    return;
+  }
+  beatBpm = r.bpm; beatPeriod = r.period; beatAnchorAbs = r.anchorAbs;
+  bpmIn.value = r.bpm.toFixed(1);
+  alignCb.disabled = false;
+  alignCb.checked = true;
+  applyBeats();   // porta subito la durata del loop su N beat a questo tempo
+  const lvl = (r.votes === r.tries && r.tries >= 3) ? "high" : "medium";
+  bpmOut.innerHTML =
+    "detected <span class='v'>" + r.bpm.toFixed(1) + " BPM</span>" +
+    " · confidence " + lvl + " (" + r.votes + "/" + r.tries + " windows agree)" +
+    " · beat every " + (r.period/ctx.sampleRate*1000).toFixed(1) + " ms · grid locked";
+  store.set("bpm", { bpm: Number(r.bpm.toFixed(1)), beats: Number(beatsSel.value) });
+}
+
+/* ================= cattura & loop ================= */
+/* Finestra di lettura per la cattura, in indici assoluti. Pura: testabile a parte.
+   `total` = campioni scritti finora, `avail` = quanti ne trattiene ancora il ring.   */
+const PAD_HEAD = 0.5;     // contesto prima dell'inizio del loop
+const PAD_TAIL = 1.5;     // e dopo la fine: serve più margine per rifinire la coda
+const MIN_LOOP_SEC = 0.25;// stesso minimo dello slider: sotto, durata e loop si
+                          // desincronizzavano (setLen arrotondava a 0.25)
+
+function captureWindow(target, padH, padT, total, avail, wantAlign, anchor, period){
+  const oldest = total - avail;
+  const limit  = total - 128 - padT;        // serve anche il contesto DOPO la fine
+  if(limit - target - padH < oldest) return { ok:false };
+  let bodyEnd = limit, aligned = false;
+  if(wantAlign && period > 0 && isFinite(anchor)){
+    // Il periodo è frazionario (viene dall'interpolazione parabolica): l'indice va
+    // ARROTONDATO, altrimenti arriva non intero al ring — e Float32Array[i.frazionario]
+    // è undefined, quindi il buffer si riempiva di NaN (loop muto, solo con aggancio).
+    const cand = Math.round(anchor + Math.floor((limit - anchor)/period)*period);
+    if(cand <= limit && cand - target - padH >= oldest){ bodyEnd = cand; aligned = true; }
+  }
+  return { ok:true, startAbs: bodyEnd - target, bodyEnd: bodyEnd, aligned: aligned };
+}
+
+/* Prende dal ring il loop PIÙ il contesto: è questa regione che si vede e si rifinisce. */
+function grabRegion(w, target, padH, padT, sr){
+  const len = padH + target + padT;
+  const buf = ctx.createBuffer(2, len, sr);
+  const tmp = new Float32Array(len);
+  for(let c=0;c<2;c++){
+    readAbs(c, w.startAbs - padH, len, tmp);
+    buf.getChannelData(c).set(tmp);
+  }
+  regionBuf = buf;
+  regionStartAbs = w.startAbs - padH;
+  selStart = padH; selEnd = padH + target;
+  selEdited = false;
+}
+
+/* Costruisce il loop dalla selezione corrente. Il crossfade sta in CODA e pesca dal
+   contesto che precede l'inizio: ripiegando invece la coda sopra l'inizio, out[0]
+   diventava tutto materiale della fine e l'attacco del downbeat spariva. */
+function rebuildLoop(){
+  if(!regionBuf || !ctx) return 0;
+  const sr = ctx.sampleRate;
+  const len = selEnd - selStart;
+  if(len < Math.round(MIN_LOOP_SEC*sr)) return 0;
+  const xf = Math.min(Math.round(0.020*sr), Math.floor(len/4), selStart);
+  const buf = ctx.createBuffer(2, len, sr);
+  let peak = 0;
+  for(let c=0;c<2;c++){
+    const src = regionBuf.getChannelData(c), out = buf.getChannelData(c);
+    for(let i=0;i<len;i++) out[i] = src[selStart + i];
+    for(let j=0;j<xf;j++){
+      const a = Math.PI/2 * (j/xf), i = len - xf + j;
+      out[i] = out[i]*Math.cos(a) + src[selStart - xf + j]*Math.sin(a);
+    }
+    for(let i=0;i<len;i+=13){ const v = Math.abs(out[i]); if(v > peak) peak = v; }
+  }
+  loopBuf = buf;
+  return peak;
+}
+
+function capture(){
+  if(!ctx || !captureOK) return;
+  const sr = ctx.sampleRate;
+  const target = Math.round(loopLenSec * sr);
+  const padH = Math.round(PAD_HEAD * sr), padT = Math.round(PAD_TAIL * sr);
+
+  let w = captureWindow(target, padH, padT, totalAbs, buffered(), alignCb.checked, beatAnchorAbs, beatPeriod);
+  if(!w.ok){
+    loopState.textContent = "need " + fmtLen(loopLenSec + PAD_HEAD + PAD_TAIL) + " of buffer — let it play a little longer";
+    return;
+  }
+  grabRegion(w, target, padH, padT, sr);
+  let peak = rebuildLoop();
+
+  // se la finestra allineata restituisce silenzio, ricattura senza aggancio
+  if(peak < 1e-4 && w.aligned){
+    w = captureWindow(target, padH, padT, totalAbs, buffered(), false, 0, 0);
+    if(w.ok){ grabRegion(w, target, padH, padT, sr); peak = rebuildLoop(); }
+  }
+  if(peak < 1e-4){
+    regionBuf = null; loopBuf = null; drawWave();
+    loopState.textContent = "captured silence — is the radio playing? try again in a few seconds";
+    return;
+  }
+  capAligned = w.aligned;
+  drawWave();
+  reportSel();
+  btnWav.disabled = false;
+  startLoop();
+}
+
+function stopOneShot(){
+  if(oneShotSrc){
+    try{ oneShotSrc.stop(); }catch(e){}
+    oneShotSrc.disconnect();
+    oneShotSrc = null;
+  }
+}
+function playOneShot(){
+  if(!loopBuf || !ctx) return;
+  stopLoop(true);
+  stopOneShot();
+  oneShotSrc = ctx.createBufferSource();
+  oneShotSrc.buffer = loopBuf;
+  oneShotSrc.loop = false;
+  oneShotSrc.connect(loopGain);
+  oneShotSrc.onended = () => {
+    oneShotSrc = null;
+    syncTransport();
+    loopState.textContent = duck.checked
+      ? "one shot done · radio muted (▶ to bring it back)"
+      : "buffer ready · " + fmtLen(loopBuf.duration);
+  };
+  oneShotSrc.start();
+  oneShotHeld = true;
+  applyVolume();
+  loopState.textContent = "one shot " + fmtLen(loopBuf.duration) + " …";
+}
+
+function startLoop(){
+  stopOneShot();
+  stopLoop(true);
+  if(!loopBuf || !ctx) return;
+  loopSrc = ctx.createBufferSource();
+  loopSrc.buffer = loopBuf;
+  loopSrc.loop = true;
+  loopSrc.connect(loopGain);
+  loopSrc.start();
+  looping = true;
+  btnLoopPlay.disabled = false; btnOne.disabled = false;
+  applyVolume();
+  loopState.textContent = "loop " + fmtLen(loopBuf.duration) + " · " + Math.round(loopBuf.sampleRate/1000) + " kHz";
+}
+function stopLoop(quiet){
+  if(loopSrc){
+    try{ loopSrc.stop(); }catch(e){}
+    loopSrc.disconnect();
+    loopSrc = null;
+  }
+  looping = false;
+  applyVolume();
+  if(!quiet && loopBuf) loopState.textContent = "buffer ready · " + fmtLen(loopBuf.duration);
+}
+
+function reportSel(){
+  if(!loopBuf) return;
+  const dur = loopBuf.duration, out = [];
+  [1,2,4,8,16].forEach(b => {
+    const bpm = 60*b/dur;
+    if(bpm >= 55 && bpm <= 200) out.push("<b>" + bpm.toFixed(1) + "</b> BPM over " + b + " beats");
+  });
+  bpmOut.innerHTML = fmtLen(dur)
+    + (capAligned && !selEdited ? " · <span class='v'>beat-locked</span>" : "")
+    + (selEdited ? " · <span class='v'>trimmed by hand</span>" : "")
+    + (out.length ? "  →  " + out.join("  ·  ") : "");
+}
+
+const WAVE_H = 150;
+/* La pelle grafica vive nel CSS: qui si leggono solo i valori, così il disegno
+   del canvas resta in tinta con il resto senza duplicare la palette. */
+function skinColors(){
+  const cs = getComputedStyle(document.documentElement);
+  const g = n => cs.getPropertyValue(n).trim();
+  return { axis:g("--wave-axis"), shade:g("--wave-shade"), sel:g("--wave-sel"),
+           ctx:g("--wave-ctx"), beat:g("--wave-beat"), flag:g("--wave-flag") };
+}
+function drawFlag(g, x, w, dir, col){
+  const px = Math.max(1, Math.min(x, w-1));
+  g.fillStyle = col;
+  g.fillRect(px - 1, 0, 2, WAVE_H);
+  g.beginPath();
+  const sz = 9;
+  g.moveTo(px, 0); g.lineTo(px + dir*sz, 0); g.lineTo(px, sz);
+  g.closePath(); g.fill();
+}
+function drawWave(){
+  const dpr = window.devicePixelRatio || 1;
+  const w = wave.clientWidth, h = WAVE_H;
+  if(!w) return;
+  wave.width = Math.floor(w*dpr); wave.height = Math.floor(h*dpr);
+  const g = wave.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const C = skinColors();
+  g.strokeStyle = C.axis; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, h/2); g.lineTo(w, h/2); g.stroke();
+  if(!regionBuf) return;
+
+  const n = regionBuf.length;
+  const d0 = regionBuf.getChannelData(0);
+  const d1 = regionBuf.numberOfChannels > 1 ? regionBuf.getChannelData(1) : d0;
+  const x0 = selStart/n*w, x1 = selEnd/n*w;
+
+  g.fillStyle = C.shade;                         // il contesto sta in ombra
+  g.fillRect(0, 0, x0, h); g.fillRect(x1, 0, w - x1, h);
+
+  // Una colonna per pixel FISICO. Disegnando una colonna per pixel CSS, su schermi
+  // retina metà della risoluzione del canvas restava inutilizzata: da lì la sgranatura.
+  const cols = Math.max(1, Math.floor(w*dpr)), cw = 1/dpr, step = n/cols;
+  for(let i=0;i<cols;i++){
+    const x = i*cw;
+    const a = Math.floor(i*step), b = Math.min(Math.floor((i+1)*step), n);
+    let mn = 1, mx = -1;
+    for(let j=a;j<b;j++){ const v = (d0[j] + d1[j])*0.5; if(v<mn) mn=v; if(v>mx) mx=v; }
+    if(mn > mx){ mn = mx = 0; }
+    g.fillStyle = (x >= x0 && x < x1) ? C.sel : C.ctx;
+    const y1 = (1-mx)*h/2, y2 = (1-mn)*h/2;
+    g.fillRect(x, y1, cw, Math.max(cw, y2-y1));
+  }
+
+  if(beatPeriod > 0){                            // griglia dei beat sul contesto reale
+    g.fillStyle = C.beat;
+    let k = Math.ceil((regionStartAbs - beatAnchorAbs)/beatPeriod);
+    for(;;k++){
+      const pos = beatAnchorAbs + k*beatPeriod - regionStartAbs;
+      if(pos >= n) break;
+      if(pos >= 0) g.fillRect(pos/n*w, 0, 1, h);
+    }
+  }
+  drawFlag(g, x0, w, +1, C.flag);
+  drawFlag(g, x1, w, -1, C.flag);
+}
+
+/* --- bandierine trascinabili --- */
+let dragHandle = null, dragFrom = 0, dragging = false;
+function handleAt(clientX){
+  const r = wave.getBoundingClientRect(), n = regionBuf.length;
+  const x = clientX - r.left;
+  const ds = Math.abs(x - selStart/n*r.width), de = Math.abs(x - selEnd/n*r.width);
+  if(Math.min(ds, de) > 14) return null;
+  return ds <= de ? "s" : "e";
+}
+wave.addEventListener("pointerdown", ev => {
+  if(!regionBuf) return;
+  const hnd = handleAt(ev.clientX);
+  if(!hnd) return;
+  dragHandle = hnd; dragFrom = ev.clientX; dragging = false;
+  try{ wave.setPointerCapture(ev.pointerId); }catch(e){}
+  ev.preventDefault();
+});
+wave.addEventListener("pointermove", ev => {
+  if(!regionBuf || !ctx) return;
+  if(!dragHandle){ wave.style.cursor = handleAt(ev.clientX) ? "ew-resize" : "default"; return; }
+  // soglia: un click fermo non deve spostare la selezione, serve un trascinamento vero
+  if(!dragging){
+    if(Math.abs(ev.clientX - dragFrom) < 3) return;
+    dragging = true;
+  }
+  const r = wave.getBoundingClientRect(), n = regionBuf.length, sr = ctx.sampleRate;
+  const v = Math.round(Math.max(0, Math.min(r.width, ev.clientX - r.left))/r.width*n);
+  const minLen = Math.round(MIN_LOOP_SEC*sr), xf = Math.round(0.020*sr);
+  // l'inizio non può toccare il bordo: al crossfade in coda servono xf campioni prima
+  if(dragHandle === "s") selStart = Math.max(xf, Math.min(v, selEnd - minLen));
+  else                   selEnd   = Math.min(n,  Math.max(v, selStart + minLen));
+  selEdited = true;
+  drawWave();
+  loopState.textContent = "selection " + fmtLen((selEnd - selStart)/sr);
+});
+wave.addEventListener("pointerup", ev => {
+  if(!dragHandle) return;
+  const mosso = dragging;
+  dragHandle = null; dragging = false;
+  try{ wave.releasePointerCapture(ev.pointerId); }catch(e){}
+  if(!mosso) return;                       // click senza trascinamento: niente da ricostruire
+  if(rebuildLoop() > 0){
+    setLen(loopBuf.duration);
+    reportSel();
+    if(looping) startLoop(); else stopLoop();
+  }
+});
+
+function wavBlob(buf){
+  const nch = buf.numberOfChannels, len = buf.length, sr = buf.sampleRate;
+  const ab = new ArrayBuffer(44 + len*nch*2), dv = new DataView(ab);
+  const str = (o,s) => { for(let i=0;i<s.length;i++) dv.setUint8(o+i, s.charCodeAt(i)); };
+  str(0,"RIFF"); dv.setUint32(4, 36+len*nch*2, true); str(8,"WAVEfmt ");
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,nch,true);
+  dv.setUint32(24,sr,true); dv.setUint32(28,sr*nch*2,true);
+  dv.setUint16(32,nch*2,true); dv.setUint16(34,16,true);
+  str(36,"data"); dv.setUint32(40,len*nch*2,true);
+  const chans = [];
+  for(let c=0;c<nch;c++) chans.push(buf.getChannelData(c));
+  let o = 44;
+  for(let i=0;i<len;i++){
+    for(let c=0;c<nch;c++){
+      const s = Math.max(-1, Math.min(1, chans[c][i]));
+      dv.setInt16(o, s < 0 ? s*0x8000 : s*0x7fff, true);
+      o += 2;
+    }
+  }
+  return new Blob([ab], { type:"audio/wav" });
+}
+
+/* ================= generi (chip) ================= */
+const GENRES = [
+  ["house",767],["deep house",248],["techno",415],["trance",294],["electronic",1021],["dance",1572],
+  ["drum and bass",113],["downtempo",120],["ambient",397],["chillout",440],["lounge",351],
+  ["jazz",1233],["blues",341],["soul",458],["funk",335],["disco",367],["reggae",261],["hiphop",293],
+  ["rock",3205],["metal",457],["punk",167],["indie",442],["pop",6161],["folk",614],["country",718],
+  ["classical",1625],["gospel",362],["salsa",306],["latin",162],["world music",273],
+  ["oldies",1434],["60s",266],["70s",591],["80s",1256],["90s",1006],["news",3032],["talk",1558]
+];
+function buildGenres(){
+  GENRES.forEach(([name, count]) => {
+    const b = document.createElement("button");
+    b.className = "gtag";
+    b.dataset.tag = name;
+    b.title = count + " stations";
+    b.innerHTML = name + "<small>" + count + "</small>";
+    b.onclick = () => selectGenre(b.dataset.tag === activeTag() ? "" : b.dataset.tag);
+    gtags.appendChild(b);
+  });
+}
+function activeTag(){ return $("fTag").value; }
+
+/* I due tab sono alternative: si filtra per genere OPPURE per paese/lingua.
+   Usare l'uno azzera l'altro, così non restano filtri attivi fuori dalla vista. */
+function switchPane(name){
+  $("genpane").hidden = (name !== "gen");
+  $("advpane").hidden = (name !== "adv");
+  $("tabGen").classList.toggle("sel", name === "gen");
+  $("tabAdv").classList.toggle("sel", name === "adv");
+}
+function applyGenreValue(tag){
+  const sel = $("fTag");
+  if(tag && !Array.from(sel.options).some(o => o.value === tag)){
+    const o = document.createElement("option");
+    o.value = tag; o.textContent = tag;
+    sel.appendChild(o);
+  }
+  sel.value = tag || "";
+  gtags.querySelectorAll(".gtag").forEach(b => b.classList.toggle("sel", b.dataset.tag === sel.value));
+}
+function filterSummary(){
+  const t = $("fTag").value;
+  const c = $("fCountry").value;
+  const cTxt = c ? ($("fCountry").selectedOptions[0].textContent.replace(/\s*\(\d+\)$/, "")) : "";
+  const nm = $("fName").value.trim();
+  const bits = [];
+  if(t) bits.push("genre: " + t);
+  if(cTxt) bits.push("country: " + shortCountry(cTxt, 20));
+  if(nm) bits.push("name: " + nm);
+  return bits.join(" · ");
+}
+function afterFilterChange(msg){
+  pool = [];
+  gsel.textContent = filterSummary();
+  poolInfo.textContent = msg || "filters updated";
+  store.set("filters", filters());
+}
+function selectGenre(tag){
+  applyGenreValue(tag);
+  if(tag){ $("fCountry").value = ""; $("fName").value = ""; }   // esclusione reciproca
+  afterFilterChange(tag ? "genre: " + tag : null);
+}
+function useAdvanced(){
+  if($("fCountry").value || $("fName").value.trim()) applyGenreValue("");
+  afterFilterChange();
+}
+
+/* ================= pool ================= */
+function filters(){
+  return {
+    countrycode: $("fCountry").value,
+    tag: $("fTag").value,
+    name: $("fName").value.trim(),
+    bitrateMin: $("fBitrate").value,
+    httpsOnly: $("fHttps").checked
+  };
+}
+function usable(s, f){
+  if(!s || !s.url_resolved) return false;
+  if(broken.has(s.stationuuid) || seen.has(s.stationuuid)) return false;
+  if(f.httpsOnly && !s.url_resolved.startsWith("https:")) return false;
+  if((!canHls || useDecode) && /\.m3u8(\?|$)/i.test(s.url_resolved)) return false;
+  return true;
+}
+async function refill(){
+  const f = filters();
+  const p = new URLSearchParams({ hidebroken:"true", order:"random", limit:"120" });
+  if(f.countrycode) p.set("countrycode", f.countrycode);
+  // senza tagExact l'API fa match per sottostringa: "reggae" pescava anche reggaeton
+  if(f.tag){ p.set("tag", f.tag); p.set("tagExact", "true"); }
+  if(f.name)        p.set("name", f.name);
+  if(f.bitrateMin)  p.set("bitrateMin", f.bitrateMin);
+  let list = await api("/json/stations/search?" + p.toString());
+  list = list.filter(s => usable(s, f));
+  if(list.length === 0 && seen.size){ seen = new Set(); store.set("seen", []); }
+  for(let i=list.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [list[i],list[j]]=[list[j],list[i]]; }
+  pool = list;
+  poolInfo.textContent = pool.length ? pool.length + " stations queued" : "queue empty";
+}
+
+/* ================= tuning ================= */
+async function tune(){
+  if(busy) return;
+  if(diagUrl){ const u = diagUrl; diagUrl = null; ensureGraph(); sweepDial();
+    play({ stationuuid:"diag", name:"diag", country:"", tags:"", url_resolved:u, homepage:"" }); return; }
+  busy = true; btnTune.disabled = true;
+  ensureGraph();
+  sweepDial();
+  setStatus("finding a station…", "load");
+  try{
+    if(pool.length === 0) await refill();
+    if(pool.length === 0){
+      settleDial();
+      setStatus("no station matches these filters", "err");
+      poolInfo.textContent = "0 results — widen the filters";
+      elName.textContent = "No results";
+      elWhere.textContent = activeTag() ? "No station for the genre “" + activeTag() + "” with these filters." : "Try removing one of the filters.";
+      return;
+    }
+    const st = pool.pop();
+    poolInfo.textContent = pool.length + " stations queued";
+    seen.add(st.stationuuid);
+    if(seen.size > 400) seen = new Set(Array.from(seen).slice(-200));
+    store.set("seen", Array.from(seen));
+    play(st);
+  }catch(e){
+    settleDial();
+    setStatus("network error: " + (e && e.message ? e.message : e), "err");
+  }finally{
+    busy = false; btnTune.disabled = false;
+  }
+}
+
+function stopBoth(){
+  decStop();
+  [audioC, audioP].forEach(el => {
+    el.pause(); el.removeAttribute("src");
+    try{ el.load(); }catch(e){}
+  });
+}
+
+function play(st){
+  stopOneShot(); oneShotHeld = false;
+  stopLoop();          // la stazione nuova ha la precedenza sul loop in corso
+  current = st;
+  render(st);
+  clearTimeout(watchdog); watchdog = null;
+  stopBoth();
+  captureOK = false; plainReason = "";
+  btnCap.disabled = true; btnAuto.disabled = true;
+  totalAbs = 0;                      // niente cattura a cavallo di due stazioni
+  beatPeriod = 0; alignCb.checked = false; alignCb.disabled = true;
+  ensureGraph();
+  if(useDecode && ctx){ decStart(st.url_resolved); return; }
+  tryLoad("cors");
+}
+
+function tryLoad(mode){
+  currentMode = mode;
+  audio = (mode === "cors") ? audioC : audioP;
+  applyVolume();
+  setStatus(mode === "cors" ? "connecting to stream…" : "retrying without CORS…", "load");
+  audio.src = current.url_resolved;
+  try{ audio.load(); }catch(e){}
+  audio.play().catch(err => {
+    if(err && err.name === "NotAllowedError"){
+      clearTimeout(watchdog); watchdog = null;
+      setStatus("press ▶ to start audio");
+      syncTransport();
+    } else nextAttempt(mode);
+  });
+  clearTimeout(watchdog);
+  watchdog = setTimeout(() => nextAttempt(mode), mode === "cors" ? 8000 : 11000);
+}
+
+function nextAttempt(mode){
+  clearTimeout(watchdog); watchdog = null;
+  if(mode === "cors"){
+    audioC.pause(); audioC.removeAttribute("src");
+    try{ audioC.load(); }catch(e){}
+    tryLoad("plain");
+  } else failStation();
+}
+
+function failStation(){
+  clearTimeout(watchdog); watchdog = null;
+  if(!current) return;
+  broken.add(current.stationuuid);
+  store.set("broken", Array.from(broken).slice(-500));
+  if(++failStreak >= 6){
+    failStreak = 0; settleDial();
+    setStatus("too many unreachable streams — retry or change the filters", "err");
+    return;
+  }
+  setStatus("silent stream, skipping to the next…", "err");
+  setTimeout(tune, 500);
+}
+
+/* ================= modalità decode (Safari) ================= */
+const MP3_BR = [[0,32,40,48,56,64,80,96,112,128,160,192,224,256,320],[0,8,16,24,32,40,48,56,64,80,96,112,128,144,160]];
+const MP3_SR = [[44100,48000,32000],[22050,24000,16000],[11025,12000,8000]];
+const ADTS_SR = [96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000,7350];
+
+function decStart(url){
+  decStop();
+  streamMode = "decode"; currentMode = "decode";
+  dec.ctrl = new AbortController(); dec.playing = true; dec.gotAudio = false; dec.fmt = null;
+  dec.bytes = new Uint8Array(0); dec.ts = 0; dec.nextTime = 0; dec.frames = 0;
+  setStatus("connecting to stream…", "load");
+  clearTimeout(watchdog);
+  watchdog = setTimeout(() => { if(!dec.gotAudio) decFail("no decodable audio"); }, 12000);
+  fetch(url, { mode:"cors", signal:dec.ctrl.signal }).then(async r => {
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if(/aac/.test(ct)) dec.fmt = "adts"; else if(/mpeg|mp3/.test(ct)) dec.fmt = "mp3";
+    const reader = r.body.getReader();
+    for(;;){
+      const { value, done } = await reader.read();
+      if(done || !dec.playing) break;
+      decFeed(value);
+    }
+    if(dec.playing) decFail("stream interrupted");
+  }).catch(e => { if(dec.playing && e.name !== "AbortError") decFail(e.message); });
+}
+
+function decStop(keepMode){
+  dec.playing = false;
+  try{ dec.ctrl && dec.ctrl.abort(); }catch(e){}
+  try{ dec.decoder && dec.decoder.state !== "closed" && dec.decoder.close(); }catch(e){}
+  dec.ctrl = null; dec.decoder = null;
+  dec.sources.forEach(sn => { try{ sn.stop(); }catch(e){} });
+  dec.sources = []; dec.pending = []; dec.pendingN = 0;
+  if(!keepMode) streamMode = "tap";
+}
+
+/* formato non gestito, CORS assente o stream muto: la radio suona dall'elemento
+   semplice, senza cattura — come per gli stream senza CORS in Chrome */
+function decFail(reason){
+  if(!current) return;
+  clearTimeout(watchdog); watchdog = null;
+  decStop();
+  lastCorsErr = reason;
+  plainReason = /format/.test(reason) ? "unsupported format" : "stream without CORS";
+  tryLoad("plain");
+}
+
+function decSniff(b){
+  for(let i=0;i+3<b.length && i<4096;i++){
+    if(b[i] === 0xFF && (b[i+1] & 0xF6) === 0xF0) return "adts";
+    if(b[i] === 0xFF && (b[i+1] & 0xE0) === 0xE0 && ((b[i+1] >> 1) & 3) === 1) return "mp3";
+  }
+  return null;
+}
+
+function decFeed(chunk){
+  const nb = new Uint8Array(dec.bytes.length + chunk.length); nb.set(dec.bytes); nb.set(chunk, dec.bytes.length);
+  let buf = nb, p = 0;
+  if(!dec.fmt){ dec.fmt = decSniff(buf); if(!dec.fmt){ if(buf.length > 65536) decFail("unsupported format"); dec.bytes = buf; return; } }
+  for(;;){
+    if(dec.fmt === "mp3"){
+      while(p + 4 <= buf.length && !(buf[p] === 0xFF && (buf[p+1] & 0xE0) === 0xE0)) p++;
+      if(p + 4 > buf.length) break;
+      const b1 = buf[p+1], b2 = buf[p+2];
+      const ver = (b1 >> 3) & 3, layer = (b1 >> 1) & 3, brI = (b2 >> 4) & 15, srI = (b2 >> 2) & 3, pad = (b2 >> 1) & 1;
+      if(ver === 1 || layer !== 1 || brI === 0 || brI === 15 || srI === 3){ p++; continue; }   // solo Layer III
+      const mpeg1 = ver === 3, srTab = mpeg1 ? 0 : (ver === 2 ? 1 : 2);
+      const sr = MP3_SR[srTab][srI], br = MP3_BR[mpeg1 ? 0 : 1][brI] * 1000, spf = mpeg1 ? 1152 : 576;
+      const len = Math.floor((mpeg1 ? 144 : 72) * br / sr) + pad;
+      if(p + len > buf.length) break;
+      decPush(buf.slice(p, p + len), sr, ((buf[p+3] >> 6) & 3) === 3 ? 1 : 2, spf);
+      p += len;
+    }else{
+      while(p + 7 <= buf.length && !(buf[p] === 0xFF && (buf[p+1] & 0xF6) === 0xF0)) p++;
+      if(p + 7 > buf.length) break;
+      const len = ((buf[p+3] & 3) << 11) | (buf[p+4] << 3) | (buf[p+5] >> 5);
+      if(len < 7){ p++; continue; }
+      if(p + len > buf.length) break;
+      const sr = ADTS_SR[(buf[p+2] >> 2) & 15] || 44100;
+      const ch = (((buf[p+2] & 1) << 2) | (buf[p+3] >> 6)) || 2;
+      decPush(buf.slice(p, p + len), sr, ch > 2 ? 2 : ch, 1024);
+      p += len;
+    }
+  }
+  dec.bytes = buf.slice(p);
+}
+
+function decPush(frame, sr, ch, samplesPerFrame){
+  if(!dec.decoder){
+    dec.decoder = new AudioDecoder({ output: decOutput, error: e => decFail("decoder: " + e.message) });
+    dec.decoder.configure(dec.fmt === "mp3" ? { codec:"mp3", sampleRate:sr, numberOfChannels:ch }
+                                            : { codec:"mp4a.40.2", sampleRate:sr, numberOfChannels:ch });
+  }
+  dec.decoder.decode(new EncodedAudioChunk({ type:"key", timestamp:dec.ts, data:frame }));
+  dec.ts += Math.round(samplesPerFrame / sr * 1e6);
+  dec.frames++;
+}
+
+/* AudioData -> due piani Float32. La conversione a f32-planar è quella che la specifica
+   richiede sempre; se manca, si accetta il formato nativo intrecciato. */
+function audioDataToPlanar(ad){
+  const n = ad.numberOfFrames, ch = ad.numberOfChannels, out = [];
+  try{
+    for(let c=0;c<Math.min(ch,2);c++){ const f = new Float32Array(n); ad.copyTo(f, { planeIndex:c, format:"f32-planar" }); out.push(f); }
+    return out;
+  }catch(e){}
+  const all = new Float32Array(n*ch);
+  ad.copyTo(all, { planeIndex:0 });
+  for(let c=0;c<Math.min(ch,2);c++){ const f = new Float32Array(n); for(let i=0;i<n;i++) f[i] = all[i*ch + c]; out.push(f); }
+  return out;
+}
+
+function decOutput(ad){
+  if(!dec.playing){ ad.close(); return; }
+  const n = ad.numberOfFrames, rate = ad.sampleRate;
+  let chans;
+  try{ chans = audioDataToPlanar(ad); }catch(e){ ad.close(); return; }
+  ad.close();
+  dec.pending.push({ chans, n }); dec.pendingN += n;
+  if(dec.pendingN < rate * 0.2) return;            // blocchi da ~200 ms: pochi nodi, niente buchi
+  const buf = ctx.createBuffer(2, dec.pendingN, rate);
+  let off = 0;
+  for(const q of dec.pending){ for(let c=0;c<2;c++) buf.getChannelData(c).set(q.chans[c] || q.chans[0], off); off += q.n; }
+  dec.pending = []; dec.pendingN = 0;
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(decBus);
+  const now = ctx.currentTime;
+  if(dec.nextTime < now + 0.05) dec.nextTime = now + 0.3;   // avvio, o buco di rete: si riparte con un po' di anticipo
+  src.start(dec.nextTime); dec.nextTime += buf.duration;
+  dec.sources.push(src);
+  src.onended = () => { const i = dec.sources.indexOf(src); if(i >= 0) dec.sources.splice(i, 1); };
+  if(!dec.gotAudio){ dec.gotAudio = true; onStreamPlaying(); }
+}
+
+/* stesso effetto dell'evento 'playing' dell'elemento con CORS */
+function onStreamPlaying(){
+  clearTimeout(watchdog); watchdog = null;
+  failStreak = 0;
+  settleDial();
+  corsPlayed = true; captureOK = true;
+  setStatus("on air", "live");
+  if(!elChips.querySelector(".chip.cap")) chip("capture", "cap");
+  if(!loopBuf) loopState.textContent = "buffer filling…";
+  syncTransport();
+  pushHistory(current);
+}
+
+function wire(el, mode){
+  el.addEventListener("playing", () => {
+    if(el !== audio) return;
+    clearTimeout(watchdog); watchdog = null;
+    failStreak = 0;
+    settleDial();
+    syncTransport();
+    if(mode === "cors") corsPlayed = true;
+    captureOK = (mode === "cors") && !!ctx;
+    if(captureOK){
+      setStatus("on air", "live");
+      // 'playing' può riscattare dopo un rebuffer: niente chip duplicati
+      if(!elChips.querySelector(".chip.cap")) chip("capture", "cap");
+      if(!loopBuf) loopState.textContent = "buffer filling…";
+    }else{
+      setStatus("on air · " + (plainReason || "stream without CORS") + ", capture unavailable", "live");
+      btnCap.disabled = true; btnAuto.disabled = true;
+      loopState.textContent = "capture unavailable on this station";
+    }
+    pushHistory(current);
+  });
+  el.addEventListener("error",   () => {
+    if(mode === "cors") lastCorsErr = (el.error && el.error.code) || -1;
+    if(el === audio && current) nextAttempt(mode);
+  });
+  el.addEventListener("waiting", () => { if(el === audio && !watchdog) setStatus("buffering…", "load"); });
+  el.addEventListener("pause",   () => {
+    if(el !== audio || !el.getAttribute("src")) return;
+    setStatus("paused"); syncTransport();
+  });
+}
+wire(audioC, "cors");
+wire(audioP, "plain");
+
+/* ================= preferiti + cronologia ================= */
+function isFav(st){ return st && favs.some(f => f.stationuuid === st.stationuuid); }
+function slim(st){
+  return { stationuuid:st.stationuuid, name:st.name, country:st.country, state:st.state,
+           tags:st.tags, codec:st.codec, bitrate:st.bitrate, language:st.language,
+           favicon:st.favicon, homepage:st.homepage, url_resolved:st.url_resolved };
+}
+function toggleFav(){
+  if(!current) return;
+  if(isFav(current)) favs = favs.filter(f => f.stationuuid !== current.stationuuid);
+  else favs.unshift(slim(current));
+  store.set("favs", favs);
+  btnFav.classList.toggle("on", isFav(current));
+  if(tab === "favs") renderList();
+}
+function pushHistory(st){
+  if(!st) return;
+  hist = hist.filter(h => h.stationuuid !== st.stationuuid);
+  hist.unshift(slim(st));
+  hist = hist.slice(0, 40);
+  store.set("hist", hist);
+  if(tab === "hist") renderList();
+}
+/* Nomi di nazione come "The United Kingdom Of Great Britain And Northern Ireland"
+   non stanno in un elenco stretto: si taglia al confine di parola, senza lasciare
+   appesa una preposizione. Il nome intero resta nel tooltip. */
+function shortCountry(c, max){
+  if(!c) return "";
+  const s = c.replace(/^the\s+/i, "");
+  if(s.length <= max + 4) return s;      // tolleranza: non si taglia per due caratteri
+  let out = "";
+  for(const w of s.split(/\s+/)){
+    if(out && (out + " " + w).length > max) break;
+    out = out ? out + " " + w : w;
+  }
+  const rifila = t => t.replace(/[\s,;:]+$/, "")
+                       .replace(/\s+(of|and|the|de|di|del|du|des)$/i, "")
+                       .replace(/[\s,;:]+$/, "");
+  return (rifila(out) || s.slice(0, max)) + "…";
+}
+
+function renderList(){
+  const data = tab === "favs" ? favs : hist;
+  listEl.innerHTML = "";
+  if(data.length === 0){
+    const d = document.createElement("div");
+    d.className = "empty";
+    d.textContent = tab === "favs" ? "No favourites yet. Press ☆ on a station you like."
+                                   : "No station listened to yet.";
+    listEl.appendChild(d);
+    return;
+  }
+  data.forEach(st => {
+    const li = document.createElement("li");
+    const t = document.createElement("span"); t.className = "t";
+    t.textContent = st.name.trim() || "(unnamed)";
+    const m = document.createElement("span"); m.className = "m";
+    m.textContent = [shortCountry(st.country, 20), st.bitrate ? st.bitrate+"k" : ""].filter(Boolean).join(" · ");
+    m.title = [st.country, st.bitrate ? st.bitrate+"k" : ""].filter(Boolean).join(" · ");
+    li.appendChild(t); li.appendChild(m);
+    if(tab === "favs"){
+      const x = document.createElement("span");
+      x.className = "x"; x.textContent = "×"; x.title = "Remove";
+      x.onclick = ev => {
+        ev.stopPropagation();
+        favs = favs.filter(f => f.stationuuid !== st.stationuuid);
+        store.set("favs", favs); renderList();
+        if(current && current.stationuuid === st.stationuuid){ btnFav.classList.remove("on"); }
+      };
+      li.appendChild(x);
+    }
+    li.onclick = () => { ensureGraph(); sweepDial(); play(st); };
+    listEl.appendChild(li);
+  });
+}
+
+/* ================= filtri ================= */
+async function loadFilterOptions(){
+  try{
+    const countries = await api("/json/countries");
+    countries.filter(c => c.iso_3166_1 && c.stationcount > 20)
+      .sort((a,b) => a.name.localeCompare(b.name, "it"))
+      .forEach(c => {
+        const o = document.createElement("option");
+        o.value = c.iso_3166_1; o.textContent = c.name + " (" + c.stationcount + ")";
+        $("fCountry").appendChild(o);
+      });
+  }catch(e){}
+  try{
+    const tags = await api("/json/tags?order=stationcount&reverse=true&limit=140");
+    tags.filter(t => t.name && t.name.length > 2 && t.stationcount > 100).forEach(t => {
+      const o = document.createElement("option");
+      o.value = t.name; o.textContent = t.name + " (" + t.stationcount + ")";
+      $("fTag").appendChild(o);
+    });
+  }catch(e){}
+  const f = store.get("filters", null);
+  if(f){
+    $("fCountry").value = f.countrycode || "";
+    $("fName").value    = f.name || "";
+    $("fBitrate").value = f.bitrateMin != null ? f.bitrateMin : "128";
+    $("fHttps").checked = f.httpsOnly !== false;
+    applyGenreValue(f.tag || "");
+    gsel.textContent = filterSummary();
+    if(!f.tag && (f.countrycode || f.name)) switchPane("adv");
+  }else gsel.textContent = "";
+}
+$("fCountry").addEventListener("change", useAdvanced);
+$("fName").addEventListener("input", useAdvanced);   // il testo filtra mentre si scrive
+["fBitrate","fHttps"].forEach(id => $(id).addEventListener("change", () => afterFilterChange()));
+$("fTag").addEventListener("change", () => selectGenre($("fTag").value));
+$("gclear").onclick = () => {
+  applyGenreValue(""); $("fCountry").value = ""; $("fName").value = "";
+  afterFilterChange("filters cleared");
+};
+document.querySelectorAll(".ftab").forEach(b => b.onclick = () => switchPane(b.dataset.pane));
+
+/* ================= controlli ================= */
+btnTune.onclick = tune;
+btnPlay.onclick = () => {
+  if(!current) return;
+  ensureGraph();
+  // stessa condizione di applyVolume(): se il looper l'ha silenziata, il primo ▶
+  // le ridà voce invece di metterla in pausa. Se era anche ferma, prosegue e la riavvia.
+  if(duck.checked && (looping || oneShotHeld)){
+    oneShotHeld = false; stopOneShot(); stopLoop();
+    if(radioPlaying()){ setStatus("on air", "live"); return; }
+  }
+  if(streamMode === "decode"){
+    if(dec.playing){ decStop(true); setStatus("paused"); syncTransport(); return; }
+    totalAbs = 0; beatPeriod = 0; alignCb.checked = false; alignCb.disabled = true;
+    btnCap.disabled = true; btnAuto.disabled = true;
+    decStart(current.url_resolved);            // uno stream dal vivo non si riprende: si riapre
+    return;
+  }
+  if(audio.paused){
+    // Ripartendo da una pausa il ring contiene i secondi di silenzio registrati nel
+    // frattempo: si riparte da zero, così una cattura non ci finisce dentro.
+    totalAbs = 0;
+    beatPeriod = 0; alignCb.checked = false; alignCb.disabled = true;
+    btnCap.disabled = true; btnAuto.disabled = true;
+    setStatus("connecting to stream…", "load");
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => nextAttempt(currentMode), 11000);
+    audio.play().catch(() => setStatus("could not start audio", "err"));
+  } else audio.pause();
+};
+btnFav.onclick  = toggleFav;
+btnSite.onclick = () => { if(current && current.homepage) window.open(current.homepage, "_blank", "noopener"); };
+btnCap.onclick  = capture;
+btnAuto.onclick = runAutoBpm;
+btnLoopPlay.onclick = () => {
+  oneShotHeld = false;                      // il transporto del loop ha la precedenza
+  if(looping) stopLoop(); else startLoop();
+};
+btnOne.onclick = playOneShot;
+function wavName(){
+  const nm = ((current && current.name) || "loop").replace(/[^\w\-]+/g, "_").slice(0, 40);
+  return nm + "_" + (beatBpm ? beatBpm.toFixed(1) + "bpm_" : "")
+            + (loopBuf ? loopBuf.duration.toFixed(2) : "0") + "s.wav";
+}
+
+/* ================= dove finiscono gli export =================
+   Una pagina non puo' scrivere a un percorso scelto da noi: l'unica strada e'
+   la File System Access API, che consegna una maniglia di cartella riusabile e
+   memorizzabile (le maniglie non sono serializzabili: vanno in IndexedDB, non
+   in localStorage). Dove manca — Firefox, Safari, o un file:// che il browser
+   tratta come origine opaca — si torna allo scaricamento di prima. */
+const FSA_DIR = typeof window.showDirectoryPicker === "function";
+let destDir = null;                     // FileSystemDirectoryHandle, o null = cartella dei download
+
+function idbDo(mode, fn){
+  return new Promise((res, rej) => {
+    let rq;
+    try{ rq = indexedDB.open("rr_export", 1); }
+    catch(e){ return rej(e); }
+    rq.onupgradeneeded = () => rq.result.createObjectStore("dest");
+    rq.onerror = () => rej(rq.error || new Error("indexedDB unavailable"));
+    rq.onsuccess = () => {
+      const db = rq.result;
+      let tx, out = null;
+      try{ tx = db.transaction("dest", mode); }
+      catch(e){ db.close(); return rej(e); }
+      const r = fn(tx.objectStore("dest"));
+      if(r) r.onsuccess = () => { out = r.result; };
+      tx.oncomplete = () => { db.close(); res(out); };
+      tx.onerror    = () => { db.close(); rej(tx.error); };
+      tx.onabort    = () => { db.close(); rej(tx.error || new Error("aborted")); };
+    };
+  });
+}
+const destStore = h  => idbDo("readwrite", st => h ? st.put(h, "dir") : st.delete("dir")).catch(() => {});
+const destRecall = () => idbDo("readonly",  st => st.get("dir")).catch(() => null);
+
+/* Il permesso di scrittura non sopravvive sempre alla chiusura del browser:
+   `ask` va usato solo dentro un clic, altrimenti la richiesta viene rifiutata. */
+async function destAllowed(h, ask){
+  if(typeof h.queryPermission !== "function") return true;   // Safari non espone i permessi: si prova a scrivere
+  const opt = { mode:"readwrite" };
+  if(await h.queryPermission(opt) === "granted") return true;
+  return ask ? (await h.requestPermission(opt)) === "granted" : false;
+}
+/* Il nome della cartella lo sceglie l'utente: mai concatenato dentro innerHTML. */
+function destSay(warn, tail){
+  destNote.textContent = "";
+  if(warn){
+    const s = document.createElement("span");
+    s.className = "warn"; s.textContent = warn;
+    destNote.appendChild(s);
+  }
+  if(tail) destNote.appendChild(document.createTextNode((warn ? " — " : "") + tail));
+}
+function destShow(){
+  if(destDir){
+    destTxt.textContent = destDir.name + "/";
+    destTxt.classList.remove("dim");
+    btnDest.textContent = "Change…";
+    btnDestClear.hidden = false;
+  } else {
+    destTxt.textContent = "Downloads · browser default";
+    destTxt.classList.add("dim");
+    btnDest.textContent = "Folder…";
+    btnDestClear.hidden = true;
+  }
+}
+async function setDest(h){ destDir = h; destShow(); await destStore(h); }
+
+btnDest.onclick = async () => {
+  if(!FSA_DIR){
+    destSay("this browser cannot write into a folder you pick",
+            "Chrome and Edge can; here the file lands in the download folder set in the browser preferences " +
+            "(turn on “ask where to save each file” to choose it every time).");
+    return;
+  }
+  let h;
+  try{ h = await window.showDirectoryPicker({ id:"rr_export", mode:"readwrite", startIn:"music" }); }
+  catch(e){
+    if(e.name === "AbortError") return;                      // ha solo chiuso il pannello
+    destSay("the folder picker is not available on this page (" + e.name + ")",
+            "exports keep going to the download folder.");
+    return;
+  }
+  if(await destAllowed(h, true)){
+    await setDest(h);
+    destSay("", "every export now lands in " + h.name + "/");
+  } else {
+    destSay("write permission denied", "exports keep going to the download folder.");
+  }
+};
+btnDestClear.onclick = async () => {
+  await setDest(null);
+  destSay("", "exports go back to the browser's download folder.");
+};
+
+(async () => {
+  destShow();
+  if(!FSA_DIR) return;
+  const h = await destRecall();
+  if(!h) return;
+  destDir = h; destShow();
+  if(!(await destAllowed(h, false)))
+    destSay("", "the browser wants to confirm " + h.name + "/ again: the first export will ask.");
+})();
+
+function downloadWav(blob, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+}
+btnWav.onclick = async () => {
+  if(!loopBuf) return;
+  const blob = wavBlob(loopBuf), name = wavName();
+  if(destDir){
+    try{
+      if(await destAllowed(destDir, true)){
+        const fh = await destDir.getFileHandle(name, { create:true });
+        const w  = await fh.createWritable();
+        await w.write(blob);
+        await w.close();
+        destSay("", "saved · " + destDir.name + "/" + name);
+        return;
+      }
+      destSay("write permission denied", "saved to the download folder instead.");
+    }catch(e){
+      destSay("could not write into " + destDir.name + "/ (" + e.name + ")", "saved to the download folder instead.");
+    }
+  }
+  downloadWav(blob, name);
+};
+
+/* Trascinamento fuori dal browser. Nessuna API web può avviare un'applicazione:
+   il file si consegna trascinandolo sull'icona di RX (o dentro Ableton, o nel Finder).
+   `DownloadURL` è supportato da Chrome/Chromium; altrove il clic resta la via. */
+let dragUrl = null;
+btnWav.addEventListener("dragstart", ev => {
+  if(!loopBuf){ ev.preventDefault(); return; }
+  if(dragUrl) URL.revokeObjectURL(dragUrl);
+  dragUrl = URL.createObjectURL(wavBlob(loopBuf));
+  ev.dataTransfer.setData("DownloadURL", "audio/wav:" + wavName() + ":" + dragUrl);
+  ev.dataTransfer.effectAllowed = "copy";
+  loopState.textContent = "drag onto RX, Ableton or the Finder…";
+});
+btnWav.addEventListener("dragend", () => {
+  if(loopBuf) loopState.textContent = "buffer ready · " + fmtLen(loopBuf.duration);
+  setTimeout(() => { if(dragUrl){ URL.revokeObjectURL(dragUrl); dragUrl = null; } }, 8000);
+});
+
+
+function setLen(sec){
+  loopLenSec = Math.max(0.25, Math.min(8, sec));
+  lenSl.value = loopLenSec;              // il cursore si posiziona sul passo più vicino,
+  lenVal.textContent = fmtLen(loopLenSec); // ma il valore usato resta quello esatto
+  store.set("looplen", loopLenSec);
+}
+function fmtLen(v){
+  const s = v.toFixed(3);
+  return (s.endsWith("0") ? v.toFixed(2) : s) + " s";
+}
+function applyBeats(){
+  const bpm = parseFloat(bpmIn.value), beats = parseFloat(beatsSel.value);
+  if(!(bpm > 0)) return false;
+  const sec = 60/bpm*beats;
+  if(sec < 0.25 || sec > 8){
+    bpmOut.innerHTML = "<span class='warn'>" + sec.toFixed(3) + " s is outside the looper range (0.25–8 s)</span> — change the beat count";
+    return false;
+  }
+  setLen(sec);
+  return true;
+}
+lenSl.oninput = () => {   // trascinando il cursore la durata torna a essere quella dello slider
+  loopLenSec = parseFloat(lenSl.value);
+  lenVal.textContent = fmtLen(loopLenSec);
+  store.set("looplen", loopLenSec);
+};
+/* 5) La durata segue BPM e beat da sola: niente pulsante da premere.
+      Lo slider resta l'override manuale. */
+function syncFromBeats(nota){
+  if(!applyBeats()) return false;
+  const bpm = parseFloat(bpmIn.value), beats = beatsSel.value;
+  bpmOut.innerHTML = (nota ? nota + " · " : "") + "length <b>" + fmtLen(loopLenSec) +
+                     "</b> = " + beats + " beats @ " + bpm.toFixed(1) + " BPM";
+  store.set("bpm", { bpm: bpm, beats: Number(beats) });
+  return true;
+}
+bpmIn.addEventListener("input",  () => syncFromBeats());
+bpmIn.addEventListener("change", () => syncFromBeats());
+beatsSel.onchange = () => syncFromBeats();
+
+/* 4) Tap tempo: mediana degli intervalli, così un tap sbagliato non sposta la stima.
+      Imposta i BPM (e quindi la durata); la griglia dei beat per l'aggancio resta
+      quella di Auto BPM, perché un tap col mouse non dice dove cade il battere
+      con la precisione necessaria (latenza di uscita + reazione umana). */
+let taps = [], tapReset = null;
+function tapTempo(){
+  const now = performance.now();
+  if(taps.length && now - taps[taps.length-1] > 2200) taps = [];   // serie nuova
+  taps.push(now);
+  if(taps.length > 9) taps.shift();
+  btnTap.classList.add("armed");
+  clearTimeout(tapReset);
+  tapReset = setTimeout(() => { btnTap.classList.remove("armed"); btnTap.textContent = "Tap"; }, 2400);
+
+  if(taps.length < 2){
+    btnTap.textContent = "Tap …";
+    bpmOut.innerHTML = "keep tapping the beat…";
+    return;
+  }
+  const iv = [];
+  for(let i=1;i<taps.length;i++) iv.push(taps[i] - taps[i-1]);
+  iv.sort((a,b) => a-b);
+  const med = iv.length % 2 ? iv[(iv.length-1)/2] : (iv[iv.length/2 - 1] + iv[iv.length/2])/2;
+  const bpm = 60000/med;
+  btnTap.textContent = "Tap " + taps.length;
+  if(bpm < 40 || bpm > 240){
+    bpmOut.innerHTML = "<span class='warn'>" + bpm.toFixed(0) + " BPM out of range</span> (40–240)";
+    return;
+  }
+  bpmIn.value = bpm.toFixed(1);
+  syncFromBeats("tap over " + taps.length + " beats");
+}
+btnTap.onclick = tapTempo;
+
+duck.onchange = () => { oneShotHeld = false; applyVolume(); store.set("duck", duck.checked); };
+
+document.querySelectorAll(".tab").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("sel"));
+    b.classList.add("sel"); tab = b.dataset.tab; renderList();
+  };
+});
+
+document.addEventListener("keydown", e => {
+  if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if(e.code === "Space"){ e.preventDefault(); if(!btnPlay.disabled) btnPlay.click(); }
+  else if(e.key === "n" || e.key === "N") tune();
+  else if(e.key === "f" || e.key === "F") toggleFav();
+  else if(e.key === "c" || e.key === "C"){ if(!btnCap.disabled) capture(); }
+  else if(e.key === "l" || e.key === "L"){ if(!btnLoopPlay.disabled) btnLoopPlay.click(); }
+  else if(e.key === "o" || e.key === "O"){ if(!btnOne.disabled) playOneShot(); }
+  else if(e.key === "b" || e.key === "B"){ if(!btnAuto.disabled) runAutoBpm(); }
+  else if(e.key === "t" || e.key === "T") tapTempo();
+});
+window.addEventListener("resize", drawWave);
+
+/* ================= diagnostica ================= */
+function ringPeak(sec){
+  if(!ring || !ctx) return null;
+  const n = Math.min(buffered(), Math.round((sec||1)*ctx.sampleRate));
+  let pk = 0;
+  for(let i=0;i<n;i++){ const v = Math.abs(ring[0][(totalAbs - n + i) % ringLen]); if(v > pk) pk = v; }
+  return +pk.toFixed(4);
+}
+window.__rr = {
+  state(){ return {
+    ua: navigator.userAgent.replace(/^.*\) /, ""),
+    mode: currentMode, streamMode, useDecode, decFrames: dec.frames, decFmt: dec.fmt,
+    captureOK, corsErr: lastCorsErr, corsPlayed, elNet: audio.networkState,
+    url: current ? current.url_resolved : null, codec: current ? current.codec : null,
+    ctx: ctx ? ctx.state : null, sr: ctx ? ctx.sampleRate : null,
+    buffered: ctx ? +(buffered()/ctx.sampleRate).toFixed(2) : 0, ringPeak: ringPeak(1),
+    elPlaying: !!current && !audio.paused, elReady: audio.readyState,
+    status: elStatus.textContent, loop: loopState.textContent }; },
+  mute(){ forceMute = true; applyVolume(); },
+  armUrl(u){ diagUrl = u; },
+  playUrl(url, name){ ensureGraph(); sweepDial();
+    play({ stationuuid:"diag", name:name||"diag", country:"", tags:"", url_resolved:url, homepage:"" }); }
+};
+document.addEventListener("keydown", e => {
+  if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if(e.key === "d" || e.key === "D") bpmOut.textContent = JSON.stringify(window.__rr.state());
+});
+
+/* ================= avvio ================= */
+buildGenres();
+setLen(store.get("looplen", 2));
+duck.checked = store.get("duck", true);
+const savedBpm = store.get("bpm", null);
+if(savedBpm){ bpmIn.value = savedBpm.bpm; beatsSel.value = savedBpm.beats; }
+applyVolume();
+
+/* ================= tema =================
+   Tutto il colore sta nei token: cambiare tema e' un attributo su <html>. Il
+   canvas e' l'unico che non li eredita — rilegge i --wave-* a ogni disegno,
+   quindi va solo ridisegnato. */
+const THEMES = ["default", "sepia", "midnight", "ember", "phosphor"];
+function applyTheme(name, save){
+  if(THEMES.indexOf(name) < 0) name = "default";
+  if(name === "default") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = name;
+  themeSel.value = name;
+  if(save) store.set("theme", name);
+  drawWave();
+}
+themeSel.onchange = () => applyTheme(themeSel.value, true);
+applyTheme(store.get("theme", "default"), false);
+
+renderList();
+loadFilterOptions()
+  .then(() => refill().catch(()=>{}))
+  .then(() => { if(pool.length) poolInfo.textContent = pool.length + " stations queued"; });
+})();
+
+</script>
+
+<script>
+/* Colla della pelle grafica: i display grandi rispecchiano i controlli.
+   Auto BPM e Tap scrivono `bpmIn.value` da codice, che non emette eventi — ma
+   aggiornano sempre anche #bpmOut, quindi basta osservare quello. */
+(function(){
+  const bpmIn = document.getElementById("bpmIn");
+  const beats = document.getElementById("beats");
+  const bpmBig = document.getElementById("bpmBig");
+  function sync(){
+    const v = parseFloat(bpmIn.value);
+    bpmBig.textContent = isFinite(v) ? v.toFixed(1) : "—";
+  }
+  ["input","change"].forEach(ev => { bpmIn.addEventListener(ev, sync); beats.addEventListener(ev, sync); });
+  new MutationObserver(sync).observe(document.getElementById("bpmOut"),
+                                     { childList:true, characterData:true, subtree:true });
+  sync();
+})();
+</script>
+</body>
+</html>
