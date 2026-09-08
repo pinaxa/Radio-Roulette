@@ -307,7 +307,7 @@
   <header>
     <div class="brand">
       <h1>RADIO ROULETTE</h1>
-      <div class="sub">web radio &middot; looper</div>
+      <div class="sub">web radio &middot; looper by pinaxa</div>
       <div class="onair">
         <span class="led" id="led"></span><span id="statusTxt">ready</span>
       </div>
@@ -393,6 +393,10 @@
               <input type="checkbox" id="fHttps" checked>
               <label for="fHttps">HTTPS streams only</label>
             </div>
+            <div class="check">
+              <input type="checkbox" id="fCapOnly" checked>
+              <label for="fCapOnly" title="Skip stations whose server blocks capture, and never offer them again">Capture-ready only</label>
+            </div>
           </div>
         </div>
       </div>
@@ -459,7 +463,7 @@
         <kbd>space</kbd> play/pause &middot; <kbd>N</kbd> next station &middot; <kbd>F</kbd> favourite &middot;
         <kbd>C</kbd> capture &middot; <kbd>L</kbd> loop &middot; <kbd>O</kbd> one shot &middot;
         <kbd>E</kbd> export &middot; <kbd>B</kbd> auto BPM &middot; <kbd>T</kbd> tap
-        <div class="credit">Station data:
+        <div class="credit">Made with Claude &middot; Station data:
           <a href="https://www.radio-browser.info" target="_blank" rel="noopener">Radio Browser</a>
         </div>
       </footer>
@@ -542,6 +546,14 @@ let audio = audioC, currentMode = "cors";
 let pool=[], current=null, tab="hist";
 let seen = new Set(store.get("seen", []));
 let broken = new Set(store.get("broken", []));
+/* Stazioni che suonano ma non si possono catturare: il loro server non manda
+   l'intestazione CORS, quindi il grafo Web Audio non le può leggere. NON e'
+   deducibile dal catalogo di Radio Browser — e' una proprieta' della risposta HTTP
+   dell'emittente, non un campo dell'API — percio' l'unico modo di filtrarle e'
+   impararle provando e non riproporle piu'. */
+let noCap = new Set(store.get("nocap", []));
+let capSkips = 0;                         // salti consecutivi, per non ciclare all'infinito
+let autoTuned = false;                    // la stazione l'ha pescata la roulette, non un clic
 let favs = store.get("favs", []);
 let hist = store.get("hist", []);
 let watchdog=null, tuningAnim=null, failStreak=0, busy=false;
@@ -1416,13 +1428,15 @@ function filters(){
     tag: $("fTag").value,
     name: $("fName").value.trim(),
     bitrateMin: $("fBitrate").value,
-    httpsOnly: $("fHttps").checked
+    httpsOnly: $("fHttps").checked,
+    capOnly: $("fCapOnly").checked
   };
 }
 function usable(s, f){
   if(!s || !s.url_resolved) return false;
   if(broken.has(s.stationuuid) || seen.has(s.stationuuid)) return false;
   if(f.httpsOnly && !s.url_resolved.startsWith("https:")) return false;
+  if(f.capOnly && noCap.has(s.stationuuid)) return false;
   if((!canHls || useDecode) && /\.m3u8(\?|$)/i.test(s.url_resolved)) return false;
   return true;
 }
@@ -1466,7 +1480,7 @@ async function tune(){
     seen.add(st.stationuuid);
     if(seen.size > 400) seen = new Set(Array.from(seen).slice(-200));
     store.set("seen", Array.from(seen));
-    play(st);
+    play(st, true);
   }catch(e){
     settleDial();
     setStatus("network error: " + (e && e.message ? e.message : e), "err");
@@ -1483,14 +1497,15 @@ function stopBoth(){
   });
 }
 
-function play(st){
+function play(st, fromRoulette){
+  autoTuned = !!fromRoulette;      // solo cio' che pesca la roulette puo' essere saltato
   stopOneShot(); oneShotHeld = false;
   stopLoop();          // la stazione nuova ha la precedenza sul loop in corso
   current = st;
   render(st);
   clearTimeout(watchdog); watchdog = null;
   stopBoth();
-  captureOK = false; plainReason = "";
+  captureOK = false; plainReason = ""; lastCorsErr = null;
   btnCap.disabled = true; btnAuto.disabled = true;
   totalAbs = 0;                      // niente cattura a cavallo di due stazioni
   beatPeriod = 0; alignCb.checked = false; alignCb.disabled = true;
@@ -1697,12 +1712,28 @@ function wire(el, mode){
     if(mode === "cors") corsPlayed = true;
     captureOK = (mode === "cors") && !!ctx;
     if(captureOK){
+      capSkips = 0;
       setStatus("on air", "live");
       // 'playing' può riscattare dopo un rebuffer: niente chip duplicati
       if(!elChips.querySelector(".chip.cap")) chip("capture", "cap");
       if(!loopBuf) loopState.textContent = "buffer filling…";
     }else{
-      setStatus("on air · " + (plainReason || "stream without CORS") + ", capture unavailable", "live");
+      // si impara comunque, anche a filtro spento: riaccendendolo serve gia' saputo
+      if(lastCorsErr !== null && current && current.stationuuid !== "diag" && !noCap.has(current.stationuuid)){
+        noCap.add(current.stationuuid);
+        store.set("nocap", Array.from(noCap).slice(-500));
+      }
+      // si salta solo cio' che ha pescato la roulette: una stazione scelta a mano
+      // dalla cronologia o dai preferiti va suonata comunque
+      const skipping = autoTuned && filters().capOnly;
+      if(skipping && ++capSkips < 6){
+        setStatus("no capture here, skipping…", "load");
+        setTimeout(tune, 400);
+        return;                    // fuori dalla cronologia: non l'abbiamo ascoltata
+      }
+      capSkips = 0;
+      setStatus("on air · " + (skipping ? "no capture-ready stream found" : (plainReason || "stream without CORS"))
+                + ", capture unavailable", "live");
       btnCap.disabled = true; btnAuto.disabled = true;
       loopState.textContent = "capture unavailable on this station";
     }
@@ -1823,6 +1854,7 @@ async function loadFilterOptions(){
     $("fName").value    = f.name || "";
     $("fBitrate").value = f.bitrateMin != null ? f.bitrateMin : "128";
     $("fHttps").checked = f.httpsOnly !== false;
+    $("fCapOnly").checked = f.capOnly !== false;
     applyGenreValue(f.tag || "");
     gsel.textContent = filterSummary();
     if(!f.tag && (f.countrycode || f.name)) switchPane("adv");
@@ -1830,7 +1862,7 @@ async function loadFilterOptions(){
 }
 $("fCountry").addEventListener("change", useAdvanced);
 $("fName").addEventListener("input", useAdvanced);   // il testo filtra mentre si scrive
-["fBitrate","fHttps"].forEach(id => $(id).addEventListener("change", () => afterFilterChange()));
+["fBitrate","fHttps","fCapOnly"].forEach(id => $(id).addEventListener("change", () => afterFilterChange()));
 $("fTag").addEventListener("change", () => selectGenre($("fTag").value));
 $("gclear").onclick = () => {
   applyGenreValue(""); $("fCountry").value = ""; $("fName").value = "";
@@ -2156,7 +2188,10 @@ window.__rr = {
     ctx: ctx ? ctx.state : null, sr: ctx ? ctx.sampleRate : null,
     buffered: ctx ? +(buffered()/ctx.sampleRate).toFixed(2) : 0, ringPeak: ringPeak(1),
     elPlaying: !!current && !audio.paused, elReady: audio.readyState,
-    status: elStatus.textContent, loop: loopState.textContent }; },
+    status: elStatus.textContent, loop: loopState.textContent,
+    noCap: noCap.size, capSkips, autoTuned }; },
+  clearNoCap(){ noCap = new Set(); store.set("nocap", []); pool = [];
+                return "forgotten — the capture-less stations will be offered again"; },
   mute(){ forceMute = true; applyVolume(); },
   armUrl(u){ diagUrl = u; },
   playUrl(url, name){ ensureGraph(); sweepDial();
