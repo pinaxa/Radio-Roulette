@@ -5,9 +5,10 @@ senza dipendenze.
 
 ## Regole non negoziabili
 
-- **Si itera solo su `index_studio_en.html`.** È l'unico file vivo. Gli snapshot
-  precedenti (`index.html`, `index_studio.html`) sono rimasti in python_work e
-  non sono stati portati qui apposta.
+- **`Radio Roulette.html` è l'unico file del progetto** e si itera solo su quello.
+  Si chiamava `index_studio_en.html` fino al 2026-09-08. Gli snapshot precedenti
+  (una versione italiana e una più vecchia) non sono stati portati qui apposta:
+  vivevano nella cartella `python_work`, ora dismessa.
 - **Deve continuare a funzionare da `file://`**: gira dentro il device Max for Live
   "HTML INSTRUMENTS" in Ableton Live. Niente moduli ES esterni, niente bundler,
   niente fetch di risorse locali: tutto inline in un unico documento.

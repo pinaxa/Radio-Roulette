@@ -4,7 +4,7 @@ Press **TUNE** and land on a random web radio station from anywhere in the
 world — then capture what you hear, loop it in time, and export the stem.
 
 A single self-contained HTML file: no build step, no dependencies, no server.
-Open `index_studio_en.html` in a browser, or drop it into a Max for Live
+Open `Radio Roulette.html` in a browser, or drop it into a Max for Live
 `HTML INSTRUMENTS` device to run it next to a Live set.
 
 ## What it does
