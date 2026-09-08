@@ -3,6 +3,11 @@
 Press **TUNE** and land on a random web radio station from anywhere in the
 world — then capture what you hear, loop it in time, and export the stem.
 
+**Try it: <https://pinaxa.github.io/radio-roulette/>** — note that the hosted
+page is served over HTTPS, so browsers block stations that stream over plain
+HTTP; tick *HTTPS streams only* in the filters to stay on ones that play. The
+local file has no such limit.
+
 A single self-contained HTML file: no build step, no dependencies, no server.
 Open `Radio Roulette.html` in a browser, or drop it into a Max for Live
 `HTML INSTRUMENTS` device to run it next to a Live set.

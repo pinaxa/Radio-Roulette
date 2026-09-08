@@ -5,7 +5,10 @@ senza dipendenze.
 
 ## Regole non negoziabili
 
-- **`Radio Roulette.html` è l'unico file del progetto** e si itera solo su quello.
+- **`Radio Roulette.html` è l'unico file dell'app** e si itera solo su quello.
+  (`index.html` esiste solo per GitHub Pages: è un redirect di dieci righe verso
+  quel file, così l'URL pubblico resta pulito senza rinominare l'app. Non
+  contiene logica, non va sviluppato.)
   Si chiamava `index_studio_en.html` fino al 2026-09-08. Gli snapshot precedenti
   (una versione italiana e una più vecchia) non sono stati portati qui apposta:
   vivevano nella cartella `python_work`, ora dismessa.
